@@ -61,27 +61,21 @@ function updateRenderView() {
     const canvasW = window.innerWidth;
     const canvasH = window.innerHeight;
 
-    // Définir une vue du monde (logique) centrée autour de (0,0)
-    let worldX = 0;
-    let worldY = 0;
+    const screenRatio = canvasW / canvasH;
+    const worldRatio = WORLD_WIDTH / WORLD_HEIGHT;
 
-    // Taille fixe du monde logique
-    const viewWidth = WORLD_WIDTH;
-    const viewHeight = WORLD_HEIGHT;
+    let viewWidth, viewHeight;
 
-    // Calcule le facteur de zoom (scale) pour adapter le monde au canvas
-    const scaleX = canvasW / viewWidth;
-    const scaleY = canvasH / viewHeight;
-    const scale = Math.min(scaleX, scaleY); // pour contenir tout le monde dans le canvas
+    if (screenRatio > worldRatio) {
+        // écran large → vue plus large
+        viewHeight = WORLD_HEIGHT;
+        viewWidth = viewHeight * screenRatio;
+    } else {
+        // écran étroit → vue plus haute
+        viewWidth = WORLD_WIDTH;
+        viewHeight = viewWidth / screenRatio;
+    }
 
-    const scaledWidth = viewWidth * scale;
-    const scaledHeight = viewHeight * scale;
-
-    // Centrage
-    const offsetX = (canvasW - scaledWidth) / 2;
-    const offsetY = (canvasH - scaledHeight) / 2;
-
-    // Définir les limites de rendu selon le monde logique
     render.bounds.min.x = 0;
     render.bounds.min.y = 0;
     render.bounds.max.x = viewWidth;
@@ -89,17 +83,22 @@ function updateRenderView() {
 
     render.canvas.width = canvasW;
     render.canvas.height = canvasH;
-
     render.options.width = canvasW;
     render.options.height = canvasH;
+}
 
-    // Appliquer la transformation de rendu (zoom + centrage)
-    const context = render.context;
-    context.setTransform(
-        scale, 0,    // scaleX, skewX
-        0, scale,    // skewY, scaleY
-        offsetX, offsetY // translateX, translateY
-    );
+function rel(x, y) {//Position relative des objets lors de l'init
+    return {
+        x: x * WORLD_WIDTH,
+        y: y * WORLD_HEIGHT
+    };
+}
+function relX(x) {
+    return x * WORLD_WIDTH;
+}
+
+function relY(y) {
+    return y * WORLD_HEIGHT;
 }
 
 
@@ -184,82 +183,84 @@ const portals = [];
 
 const levels = {
     "Test": {
-        spawn: { x: 100, y: 100 },
+        spawn: rel(0.05, 0.1), // ≈ (96, 108)
         gravityY: 1.5,
         ballRestitution: 0.5,
         bodies: [
-          () => Bodies.rectangle(400, 500, 300, 20, {
-            isStatic: true,
-            render: { fillStyle: '#888' }
-          }),
-          () => Bodies.rectangle(window.innerWidth / 2, window.innerHeight - 50, window.innerWidth, 100, {
-            isStatic: true,
-            friction: 0,
-            restitution: 0,
-            render: { fillStyle: '#888' }
-          }),
-          () => {
-            const body = Bodies.rectangle(600, 450, 50, 50, {
-              isStatic: true,
-              render: { fillStyle: '#000' }
-            });
-            body.doesKill = true;
-            return body;
-          },
-          () => {
-            const portal = Bodies.rectangle(750, 350, 40, 40, {
-              isStatic: true,
-              isSensor: true,
-              render: { fillStyle: '#0f0' },
-              collisionFilter: { group: COLLISION_GROUP_PORTAL }
-            });
-            portal.nextLevel = "Test2";
-            return portal;
-          },
-          () => {
-            const body = Bodies.rectangle(200, 300, 40, 40, {
-              restitution: 0.5,
-              render: { fillStyle: '#f55' }
-            });
-            body.doesKill = true;
-            return body;
-          },
-          () => Bodies.rectangle(300, 300, 60, 60, {
-            restitution: 0.5,
-            render: { fillStyle: '#aaa' }
-          }),
-          () => {
-            const body = Bodies.circle(500, 100, 20, {
-              restitution: 0.5,
-              render: { fillStyle: '#f00' }
-            });
-            body.doesKill = true;
-            return body;
-          },
-          () => Bodies.circle(550, 100, 25, {
-            restitution: 0.9,
-            render: { fillStyle: '#0af' }
-          }),
-          () => Matter.Bodies.fromVertices(400, 100, customShapes.Bizeau, {
-            isStatic: false,
-            render: { fillStyle: '#f55' }
-          })
+            () => Bodies.rectangle(rel(0.21, 0.46).x, rel(0.46, 0.46).y, 300, 20, {
+                isStatic: true,
+                render: { fillStyle: '#888' }
+            }),
+            () => Bodies.rectangle(rel(0.5, 1).x, rel(0.5, 1).y - 50, WORLD_WIDTH, 100, {
+                isStatic: true,
+                friction: 0,
+                restitution: 0,
+                render: { fillStyle: '#888' }
+            }),
+            () => {
+                const body = Bodies.rectangle(rel(0.31, 0.42).x, rel(0.42, 0.42).y, 50, 50, {
+                    isStatic: true,
+                    render: { fillStyle: '#000' }
+                });
+                body.doesKill = true;
+                return body;
+            },
+            () => {
+                const portal = Bodies.rectangle(rel(0.39, 0.32).x, rel(0.32, 0.32).y, 40, 40, {
+                    isStatic: true,
+                    isSensor: true,
+                    render: { fillStyle: '#0f0' },
+                    collisionFilter: { group: COLLISION_GROUP_PORTAL }
+                });
+                portal.nextLevel = "Test2";
+                return portal;
+            },
+            () => {
+                const body = Bodies.rectangle(rel(0.10, 0.28).x, rel(0.28, 0.28).y, 40, 40, {
+                    restitution: 0.5,
+                    render: { fillStyle: '#f55' }
+                });
+                body.doesKill = true;
+                return body;
+            },
+            () => Bodies.rectangle(rel(0.16, 0.28).x, rel(0.28, 0.28).y, 60, 60, {
+                restitution: 0.5,
+                render: { fillStyle: '#aaa' }
+            }),
+            () => {
+                const body = Bodies.circle(rel(0.26, 0.09).x, rel(0.09, 0.09).y, 20, {
+                    restitution: 0.5,
+                    render: { fillStyle: '#f00' }
+                });
+                body.doesKill = true;
+                return body;
+            },
+            () => Bodies.circle(rel(0.29, 0.09).x, rel(0.09, 0.09).y, 25, {
+                restitution: 0.9,
+                render: { fillStyle: '#0af' }
+            }),
+            () => Matter.Bodies.fromVertices(rel(0.21, 0.09).x, rel(0.09, 0.09).y, customShapes.Bizeau, {
+                isStatic: false,
+                render: { fillStyle: '#f55' }
+            })
         ]
-      },
+    },    
 
     1: {
         name: "Welcome To The Game!",
-        spawn: {x: 100, y:300},
+        spawn: { x: relX(0.05), y: relY(0.28) },
         gravityY: 1.5,
-        bodies:[
-            () => Bodies.rectangle(window.innerWidth / 2, window.innerHeight - 50, window.innerWidth, 100, {
+        bodies: [
+            () => Bodies.rectangle(relX(0.5), relY(1) - 50, WORLD_WIDTH, 100, {
                 isStatic: true,
-                friction: 0,     // glissant
-                restitution: 0, // léger rebond (optionnel)
+                friction: 0,
+                restitution: 0,
                 render: { fillStyle: '#888' }
             })
         ]
     }
+    
+    
 };
 
 //Changer les défauts des valeurs dans initLevel() pas ici
