@@ -122,6 +122,29 @@ const levels = {
         objects: [
             { type: 'platform', x: 300, y: 600, width: 500, height: 20 }
         ]
+    },
+    1: {
+        spawnX: 100,
+        spawnY: 100,
+        gravityY: 1.5,
+        ballRestitution: 0.4,
+        objects: [
+            // Sol principal
+            { type: 'platform', x: 400, y: 580, width: 800, height: 40 },
+    
+            // Petites plateformes en hauteur
+            { type: 'platform', x: 300, y: 450, width: 150, height: 20 },
+            { type: 'platform', x: 500, y: 350, width: 150, height: 20 },
+    
+            // Portail de fin
+            { type: 'portal', x: 700, y: 300, width: 40, height: 40, nextLevel: "Test" },
+    
+            // Cube décoratif inoffensif
+            { type: 'cube', x: 250, y: 0, width: 40, height: 40, renderColor: '#aaa' },
+    
+            // Ennemi simple
+            { type: 'circle', x: 600, y: 0, radius: 20, doesKill: true, renderColor: '#f00' }
+        ]
     }
 };
 
@@ -375,5 +398,5 @@ function resizeCanvas() {
 
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas(); // appel initial
-initLevel("Test")
+initLevel(1)
 
