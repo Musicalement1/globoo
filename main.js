@@ -1,5 +1,4 @@
 
-
 const WORLD_WIDTH = 1920;
 const WORLD_HEIGHT = 1080;
 
@@ -49,10 +48,12 @@ const {
     Runner,
     Bodies,
     Composite,
+    Composites,
     Body,
     Events,
     Mouse,
-    MouseConstraint
+    MouseConstraint,
+    Constraint
 } = Matter;
 let developerMode = false;
 
@@ -279,19 +280,236 @@ const levels = {
         ]
     },    
 
-    1: {
-        name: "Welcome To The Game!",
-        spawn: { x: relX(0.05), y: relY(0.28) },
+    "Test2": {
+        name: "Challenge Begins - Fixed",
+        spawn: rel(0.05, 0.75),
         gravityY: 1.5,
+        voidY: 1100,
         bodies: [
+    
+            // === SOL PRINCIPAL ===
             () => Bodies.rectangle(relX(0.5), relY(1) - 50, WORLD_WIDTH, 100, {
                 isStatic: true,
                 friction: 0,
                 restitution: 0,
+                render: { fillStyle: '#666' }
+            }),
+    
+            // === PLATEFORME DE SAUT DE DÉPART ===
+            () => Bodies.rectangle(relX(0.2), relY(0.65), 200, 20, {
+                isStatic: true,
                 render: { fillStyle: '#888' }
-            })
+            }),
+    
+            // === OBSTACLE MORTEL À SAUTER ===
+            () => {
+                const killer = Bodies.rectangle(relX(0.3), relY(0.75) - 35, 40, 40, {
+                    isStatic: true,
+                    render: { fillStyle: '#f00' }
+                });
+                killer.doesKill = true;
+                return killer;
+            },
+    
+            // === 🪵 BALANCE STABILISÉE ===
+            () => {
+                const group = Body.nextGroup(true); // collision désactivée entre planche et pivot
+            
+                const x = relX(0.3);
+                const y = relY(0.65);
+            
+                const plank = Bodies.rectangle(x, y, 200, 20, {
+                    collisionFilter: { group },
+                    friction: 0.6,
+                    density: 0.002,
+                    render: { fillStyle: '#c96' }
+                });
+            
+                const pivot = Bodies.circle(x, y, 5, {
+                    isStatic: true,
+                    collisionFilter: { group },
+                    render: { visible: false }
+                });
+            
+                const constraint = Constraint.create({
+                    bodyA: plank,
+                    pointA: { x: 0, y: 0 },
+                    bodyB: pivot,
+                    pointB: { x: 0, y: 0 },
+                    stiffness: 1,
+                    length: 0
+                });
+            
+                Composite.add(world, [pivot, constraint]);
+                return plank;
+            },
+    
+            // === 🌉 PONT SUSPENDU MOU & ALIGNÉ ===
+            () => {
+                var group = Body.nextGroup(true);
+                var bridge = Composites.stack(160, 290, 15, 1, 0, 0, function(x, y) {
+                    return Bodies.rectangle(x - 20, y, 53, 20, { 
+                        collisionFilter: { group: group },
+                        chamfer: 5,
+                        density: 0.005,
+                        frictionAir: 0.05,
+                        render: {
+                            fillStyle: '#060a19'
+                        }
+                    });
+                });
+                
+                Composites.chain(bridge, 0.3, 0, -0.3, 0, { 
+                    stiffness: 0.99,
+                    length: 0.0001,
+                    render: {
+                        visible: false
+                    }
+                });
+                var stack = Composites.stack(250, 50, 6, 3, 0, 0, function(x, y) {
+                    return Bodies.rectangle(x, y, 50, 50, 30);
+                });
+                var s = Bodies.rectangle(770, 490, 220, 380, { 
+                    isStatic: false, 
+                    chamfer: { radius: 20 },
+                    density: 1
+                });
+                Composite.add(world, s)
+                Composite.add(world, [
+                    bridge,
+                    stack,
+                    Bodies.rectangle(30, 490, 220, 380, { 
+                        isStatic: true, 
+                        chamfer: { radius: 20 }
+                    }),
+                    /*Bodies.rectangle(770, 490, 220, 380, { 
+                        isStatic: true, 
+                        chamfer: { radius: 20 }
+                    }),*/
+                    Constraint.create({ 
+                        pointA: { x: 140, y: 300 }, 
+                        bodyB: bridge.bodies[0], 
+                        pointB: { x: -25, y: 0 },
+                        length: 2,
+                        stiffness: 0.9
+                    }),
+                    Constraint.create({ 
+                        bodyA: s,
+                        pointA: { x: -100, y: -190 }, 
+                        bodyB: bridge.bodies[bridge.bodies.length - 1], 
+                        pointB: { x: 25, y: 0 },
+                        length: 2,
+                        stiffness: 0.9
+                    })
+                ])
+              },
+              
+              
+              
+              () => {//coprs mou
+                const cols = 6;
+                const rows = 6;
+                const spacing = 30;
+                const softBody = [];
+            
+                const offsetX = 1600;
+                const offsetY = 100;
+            
+                // Créer les points de masse (petits cercles)
+                for (let y = 0; y < rows; y++) {
+                  for (let x = 0; x < cols; x++) {
+                    const circle = Bodies.circle(offsetX + x * spacing, offsetY + y * spacing, 10, {
+                      collisionFilter: { group: -1 }, // pour éviter les collisions internes
+                      render: { fillStyle: '#3498db', opacity: 0 }//pour éviter de voir les ronds
+                    });
+                    softBody.push(circle);
+                  }
+                }
+            
+                // Ajouter les corps au monde
+                Composite.add(world, softBody);
+            
+                // Relier les points avec des contraintes ressort
+                for (let y = 0; y < rows; y++) {
+                  for (let x = 0; x < cols; x++) {
+                    const idx = y * cols + x;
+            
+                    // Horizontal
+                    if (x < cols - 1) {
+                      const right = idx + 1;
+                      Composite.add(world, Constraint.create({
+                        bodyA: softBody[idx],
+                        bodyB: softBody[right],
+                        stiffness: 0.85,//combien le soft body résiste
+                        damping: 0.1,
+                        length: spacing
+                      }));
+                    }
+            
+                    // Vertical
+                    if (y < rows - 1) {
+                      const below = idx + cols;
+                      Composite.add(world, Constraint.create({
+                        bodyA: softBody[idx],
+                        bodyB: softBody[below],
+                        stiffness: 0.2,
+                        damping: 0.1,
+                        length: spacing
+                      }));
+                    }
+            
+                    // Diagonale (optionnel)
+                    if (x < cols - 1 && y < rows - 1) {
+                      const diag1 = idx + cols + 1;
+                      Composite.add(world, Constraint.create({
+                        bodyA: softBody[idx],
+                        bodyB: softBody[diag1],
+                        stiffness: 0.2,
+                        damping: 0.1,
+                        length: Math.sqrt(spacing ** 2 * 2)
+                      }));
+                    }
+            
+                    if (x > 0 && y < rows - 1) {
+                      const diag2 = idx + cols - 1;
+                      Composite.add(world, Constraint.create({
+                        bodyA: softBody[idx],
+                        bodyB: softBody[diag2],
+                        stiffness: 0.2,
+                        damping: 0.1,
+                        length: Math.sqrt(spacing ** 2 * 2)
+                      }));
+                    }
+                  }
+                }            
+              },
+            
+            
+            
+            
+    
+            // === 🌀 Triangle SUSPENDU STABILISÉ ===
+            () => {
+                var body = Bodies.polygon(280, 450, 3, 30);
+
+                var constraint = Constraint.create({
+                    pointA: { x: 280, y: 430 },
+                    bodyB: body,
+                    pointB: { x: -10, y: -7 },
+                    stiffness: 0.0005
+                });
+            
+                Composite.add(world, [body, constraint]);
+            },
+            
+            
+            
+            
         ]
     }
+    
+    
+    
     
     
 };
@@ -353,7 +571,7 @@ function initLevel(levelId) {
     // Ajout des autres corps (static/dynamiques) du niveau
     level.bodies.forEach(createFn => {
         const body = createFn(); // Appelle la fonction pour créer un NOUVEL objet
-        
+        if (!body) return;
         Composite.add(world, body);
         if (body.size) {
             Body.scale(body, body.size.x, body.size.y);
@@ -539,5 +757,6 @@ Events.on(engine, 'afterUpdate', () => {
     }
 });
 
-initLevel("Test")
+initLevel("Test2")
+
 
