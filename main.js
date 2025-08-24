@@ -8,8 +8,12 @@ const {
     Bodies,
     Composite,
     Body,
-    Events
+    Events,
+    Mouse,
+    MouseConstraint
 } = Matter;
+let developerMode = false;
+
 
 // Création du moteur
 const engine = Engine.create();
@@ -30,6 +34,30 @@ const render = Render.create({
 
 Render.run(render);
 Runner.run(Runner.create(), engine);
+const mouse = Mouse.create(render.canvas);
+
+const mouseConstraint = MouseConstraint.create(engine, {
+    mouse: mouse,
+    constraint: {
+        stiffness: 0.2,
+        render: {
+            visible: false
+        }
+    }
+});
+document.addEventListener('keydown', event => {
+    if (event.code === 'KeyD') {
+        developerMode = !developerMode;
+        console.log(`🛠️ Mode développeur : ${developerMode ? 'activé' : 'désactivé'}`);
+        
+        if (developerMode) {
+            Composite.add(world, mouseConstraint);
+        } else {
+            Composite.remove(world, mouseConstraint);
+        }
+    }
+});
+render.mouse = mouse;
 
 // Création du sol
 /*const sol = Bodies.rectangle(window.innerWidth / 2, window.innerHeight - 50, window.innerWidth, 100, {
@@ -90,63 +118,74 @@ const portals = [];
 // ===LEVELS=== //
 
 const levels = {
-    "Test": {//Test
-        spawnX: 100,
-        spawnY: 100,
+    "Test": {
+        spawn: { x: 100, y: 100 },
         gravityY: 1.5,
         ballRestitution: 0.5,
-        objects: [
-            { type: 'platform', x: 400, y: 500, width: 300, height: 20 },
-            { type: 'killer', x: 600, y: 450, width: 50, height: 50 },
-    
-            { type: 'portal', x: 750, y: 350, width: 40, height: 40, nextLevel: "Test2" },
-    
-            // ➕ Cube qui tue
-            { type: 'cube', x: 200, y: 300, width: 40, height: 40, doesKill: true, renderColor: '#f55' },
-    
-            // ➕ Cube inoffensif
-            { type: 'cube', x: 300, y: 300, width: 60, height: 60 },
-    
-            // ➕ Balle tueuse
-            { type: 'circle', x: 500, y: 100, radius: 20, doesKill: true, renderColor: '#f00' },
-    
-            // ➕ Balle rebondissante inoffensive
-            { type: 'circle', x: 550, y: 100, radius: 25, restitution: 0.9, renderColor: '#0af' }
-        ]
-    },
-    "Test2": {
-        spawnX: 50,
-        spawnY: 50,
-        gravityY: 2.0,
-        ballRestitution: 0.2,
-        objects: [
-            { type: 'platform', x: 300, y: 600, width: 500, height: 20 }
-        ]
-    },
-    1: {
-        spawnX: 100,
-        spawnY: 100,
-        gravityY: 1.5,
-        ballRestitution: 0.4,
-        objects: [
-            // Sol principal
-            { type: 'platform', x: 400, y: 580, width: 800, height: 40 },
-    
-            // Petites plateformes en hauteur
-            { type: 'platform', x: 300, y: 450, width: 150, height: 20 },
-            { type: 'platform', x: 500, y: 350, width: 150, height: 20 },
-    
-            // Portail de fin
-            { type: 'portal', x: 700, y: 300, width: 40, height: 40, nextLevel: "Test" },
-    
-            // Cube décoratif inoffensif
-            { type: 'cube', x: 250, y: 0, width: 40, height: 40, renderColor: '#aaa' },
-    
-            // Ennemi simple
-            { type: 'circle', x: 600, y: 0, radius: 20, doesKill: true, renderColor: '#f00' }
+        bodies: [
+            Bodies.rectangle(400, 500, 300, 20, {
+                isStatic: true,
+                render: { fillStyle: '#888' }
+            }),
+
+            // ✅ Killer statique
+            (() => {
+                const body = Bodies.rectangle(600, 450, 50, 50, {
+                    isStatic: true,
+                    render: { fillStyle: '#000' }
+                });
+                body.doesKill = true;
+                return body;
+            })(),
+
+            // ✅ Portail
+            (() => {
+                const body = Bodies.rectangle(750, 350, 40, 40, {
+                    isStatic: true,
+                    isSensor: true,
+                    render: { fillStyle: '#0f0' },
+                    collisionFilter: { group: COLLISION_GROUP_PORTAL }
+                });
+                body.nextLevel = "Test2";
+                return body;
+            })(),
+
+            // ✅ Cube qui tue
+            (() => {
+                const body = Bodies.rectangle(200, 300, 40, 40, {
+                    restitution: 0.5,
+                    render: { fillStyle: '#f55' }
+                });
+                body.doesKill = true;
+                return body;
+            })(),
+
+            // ✅ Cube inoffensif
+            Bodies.rectangle(300, 300, 60, 60, {
+                restitution: 0.5,
+                render: { fillStyle: '#aaa' }
+            }),
+
+            // ✅ Balle tueuse
+            (() => {
+                const body = Bodies.circle(500, 100, 20, {
+                    restitution: 0.5,
+                    render: { fillStyle: '#f00' }
+                });
+                body.doesKill = true;
+                return body;
+            })(),
+
+            // ✅ Balle inoffensive
+            Bodies.circle(550, 100, 25, {
+                restitution: 0.9,
+                render: { fillStyle: '#0af' }
+            })
         ]
     }
+    // Ajoute les autres niveaux de façon similaire
 };
+
 
 
 
@@ -175,7 +214,7 @@ function initLevel(levelId) {
     engine.gravity.x = level.gravityX ?? 0;
 
     // Créer la balle
-    ball = Bodies.circle(level.spawnX, level.spawnY, 30, {
+    ball = Bodies.circle(level.spawn.x, level.spawn.y, 30, {
         restitution: level.ballRestitution ?? 0.5,
         friction: 0,
         frictionAir: 0.001,
@@ -184,69 +223,17 @@ function initLevel(levelId) {
     Composite.add(world, ball);
     Body.setDensity(ball, baseDensity); // Masse par défaut
     // Objets
-    level.objects.forEach(obj => {
-        let body;
+    level.bodies.forEach(body => {
+        Composite.add(world, body);
     
-        // Plateforme statique
-        if (obj.type === 'platform') {
-            body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
-                isStatic: true,
-                friction: 0,
-                render: { fillStyle: '#888' }
-            });
-        }
-    
-        // Objet mortel statique
-        else if (obj.type === 'killer') {
-            body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
-                isStatic: true,
-                //isSensor: true,
-                render: { fillStyle: '#000' }
-            });
+        if (body.doesKill) {
             dynamicKillers.push(body);
         }
     
-        // Portail
-        else if (obj.type === 'portal') {
-            body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
-                isStatic: true,
-                isSensor: true, // pour détecter sans collision
-                render: { fillStyle: '#0f0' },
-                collisionFilter: {
-                    group: COLLISION_GROUP_PORTAL
-                }
-            });
-            body.nextLevel = obj.nextLevel;
+        if (typeof body.nextLevel !== 'undefined') {
             portals.push(body);
         }
-        
-    
-        // ✅ Cube dynamique
-        else if (obj.type === 'cube') {
-            body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
-                isStatic: false,
-                restitution: obj.restitution ?? 0.5,
-                friction: obj.friction ?? 0.1,
-                render: { fillStyle: obj.renderColor ?? '#aaa' }
-            });
-            if (obj.doesKill) dynamicKillers.push(body);
-        }
-    
-        // ✅ Cercle dynamique
-        else if (obj.type === 'circle') {
-            body = Bodies.circle(obj.x, obj.y, obj.radius, {
-                isStatic: false,
-                restitution: obj.restitution ?? 0.5,
-                friction: obj.friction ?? 0.1,
-                render: { fillStyle: obj.renderColor ?? '#aaa' }
-            });
-            if (obj.doesKill) dynamicKillers.push(body);
-        }
-    
-        if (body) {
-            Composite.add(world, body);
-        }
-    });    
+    });     
 }
 
 function death() {
@@ -398,5 +385,5 @@ function resizeCanvas() {
 
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas(); // appel initial
-initLevel(1)
+initLevel("Test")
 
