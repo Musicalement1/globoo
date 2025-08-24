@@ -3,7 +3,32 @@
 const WORLD_WIDTH = 1920;
 const WORLD_HEIGHT = 1080;
 
+function convertToObjects(coordList) {
+    return coordList.map(([x, y]) => ({ x, y }));
+  }  
+  function getOppositeColor(hex) {
+    // Remove the # if present
+    hex = hex.replace(/^#/, '');
 
+    // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
+    if (hex.length === 3) {
+        hex = hex.split('').map(char => char + char).join('');
+    }
+
+    if (hex.length !== 6) {
+        throw new Error("Invalid hex color.");
+    }
+
+    // Invert each color component
+    let r = 255 - parseInt(hex.substring(0, 2), 16);
+    let g = 255 - parseInt(hex.substring(2, 4), 16);
+    let b = 255 - parseInt(hex.substring(4, 6), 16);
+
+    // Convert back to hex and pad with zeros if needed
+    let inverted = [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+
+    return `#${inverted}`;
+}
 
 const customShapes = {
     "Bizeau": [ 
@@ -11,7 +36,8 @@ const customShapes = {
         {x: 100, y: 0},
         {x: 100, y: 20},
         {x: 0, y: 50}
-    ]
+    ],
+    "ArrasShape": convertToObjects([[-1,-1],[0.5,-1],[1,-0.5],[1,0.5],[0.5,1],[-1,1]])
 }
   
   
@@ -185,13 +211,14 @@ const levels = {
     "Test": {
         spawn: rel(0.05, 0.1), // ≈ (96, 108)
         gravityY: 1.5,
-        ballRestitution: 0.5,
+        ballRestitution: 0.75,
+        frictionAir: 0.001,
         bodies: [
             () => Bodies.rectangle(rel(0.21, 0.46).x, rel(0.46, 0.46).y, 300, 20, {
                 isStatic: true,
                 render: { fillStyle: '#888' }
             }),
-            () => Bodies.rectangle(rel(0.5, 1).x, rel(0.5, 1).y - 50, WORLD_WIDTH, 100, {
+            () => Bodies.rectangle(rel(0.5, 0.75).x, rel(0.5, 0.75).y - 50, WORLD_WIDTH, 100, {
                 isStatic: true,
                 friction: 0,
                 restitution: 0,
@@ -242,6 +269,12 @@ const levels = {
             () => Matter.Bodies.fromVertices(rel(0.21, 0.09).x, rel(0.09, 0.09).y, customShapes.Bizeau, {
                 isStatic: false,
                 render: { fillStyle: '#f55' }
+            }),
+            () => Matter.Bodies.fromVertices(rel(0.21, 0.09).x, rel(0.09, 0.09).y, customShapes.ArrasShape, {
+                isStatic: false,
+                render: { fillStyle: '#f55' },
+                size: {x: 50, y: 50},
+                density: 0.01
             })
         ]
     },    
@@ -299,9 +332,9 @@ function initLevel(levelId) {
 
     // Création de la balle au point de spawn
     ball = Bodies.circle(level.spawn.x, level.spawn.y, 30, {
-        restitution: level.ballRestitution ?? 0.5,
-        friction: 0,
-        frictionAir: 0.001,
+        restitution: level.ballRestitution ?? 0.75,
+        friction: level.ballFriction ?? 0,
+        frictionAir: level.frictionAir ?? 0.001,
         render: { fillStyle: '#4cf' }
     });
     Composite.add(world, ball);
@@ -322,9 +355,19 @@ function initLevel(levelId) {
         const body = createFn(); // Appelle la fonction pour créer un NOUVEL objet
         
         Composite.add(world, body);
-      
+        if (body.size) {
+            Body.scale(body, body.size.x, body.size.y);
+        }
+        /*if (body.trueDensity) {
+            Body.setDensity(body, body.trueDensity)
+        }
+        if (body.trueMass) {
+            Body.setMass(body, body.trueMass)
+        }*/
         if (body.doesKill) {
           dynamicKillers.push(body);
+          body.render.strokeStyle = "#fff"//getOppositeColor(body.render.fillStyle);
+          body.render.lineWidth = 3;
         }
       
         if (typeof body.nextLevel !== 'undefined') {
@@ -422,7 +465,7 @@ Events.on(engine, 'beforeUpdate', () => {
     if (keys.Space && !heavyMode) {
         Body.setDensity(ball, baseDensity * heavyMultiplier);
         ball.render.strokeStyle = '#fff';
-        ball.render.lineWidth = 3;
+        ball.render.lineWidth = 5;
         heavyMode = true;
     } else if (!keys.Space && heavyMode) {
         Body.setDensity(ball, baseDensity);
@@ -496,5 +539,5 @@ Events.on(engine, 'afterUpdate', () => {
     }
 });
 
-initLevel(1)
+initLevel("Test")
 
