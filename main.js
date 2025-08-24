@@ -1,5 +1,21 @@
 
 
+const WORLD_WIDTH = 1920;
+const WORLD_HEIGHT = 1080;
+
+
+
+const customShapes = {
+    "Bizeau": [ 
+        {x: 0, y: 0},
+        {x: 100, y: 0},
+        {x: 100, y: 20},
+        {x: 0, y: 50}
+    ]
+}
+  
+  
+  
 // Import des modules de Matter.js
 const {
     Engine,
@@ -28,13 +44,67 @@ const render = Render.create({
         width: window.innerWidth,
         height: window.innerHeight,
         wireframes: false,
-        background: '#222'
+        background: '#222',
+        hasBounds: true // active la gestion de "vue"
     }
 });
 
+
 Render.run(render);
 Runner.run(Runner.create(), engine);
+
 const mouse = Mouse.create(render.canvas);
+
+Matter.Common.setDecomp(decomp); // le truc qui permet d'utiliser fromVertices()
+
+function updateRenderView() {
+    const canvasW = window.innerWidth;
+    const canvasH = window.innerHeight;
+
+    // Définir une vue du monde (logique) centrée autour de (0,0)
+    let worldX = 0;
+    let worldY = 0;
+
+    // Taille fixe du monde logique
+    const viewWidth = WORLD_WIDTH;
+    const viewHeight = WORLD_HEIGHT;
+
+    // Calcule le facteur de zoom (scale) pour adapter le monde au canvas
+    const scaleX = canvasW / viewWidth;
+    const scaleY = canvasH / viewHeight;
+    const scale = Math.min(scaleX, scaleY); // pour contenir tout le monde dans le canvas
+
+    const scaledWidth = viewWidth * scale;
+    const scaledHeight = viewHeight * scale;
+
+    // Centrage
+    const offsetX = (canvasW - scaledWidth) / 2;
+    const offsetY = (canvasH - scaledHeight) / 2;
+
+    // Définir les limites de rendu selon le monde logique
+    render.bounds.min.x = 0;
+    render.bounds.min.y = 0;
+    render.bounds.max.x = viewWidth;
+    render.bounds.max.y = viewHeight;
+
+    render.canvas.width = canvasW;
+    render.canvas.height = canvasH;
+
+    render.options.width = canvasW;
+    render.options.height = canvasH;
+
+    // Appliquer la transformation de rendu (zoom + centrage)
+    const context = render.context;
+    context.setTransform(
+        scale, 0,    // scaleX, skewX
+        0, scale,    // skewY, scaleY
+        offsetX, offsetY // translateX, translateY
+    );
+}
+
+
+window.addEventListener('resize', updateRenderView);
+updateRenderView(); // appel initial
 
 const mouseConstraint = MouseConstraint.create(engine, {
     mouse: mouse,
@@ -105,11 +175,6 @@ document.addEventListener('keyup', event => {
     }
 });
 
-const jumpForce = 0.03;
-const jumpCooldownTime = 10; // nombre de ticks à attendre entre sauts (~166ms si 60fps)
-const moveForce = 0.00125;
-const airUpForce = 0.0025;
-const downForce = 0.0025;
 
 let currentLevelId = 1; // valeur par défaut
 const dynamicKillers = [];
@@ -123,72 +188,90 @@ const levels = {
         gravityY: 1.5,
         ballRestitution: 0.5,
         bodies: [
-            Bodies.rectangle(400, 500, 300, 20, {
+          () => Bodies.rectangle(400, 500, 300, 20, {
+            isStatic: true,
+            render: { fillStyle: '#888' }
+          }),
+          () => Bodies.rectangle(window.innerWidth / 2, window.innerHeight - 50, window.innerWidth, 100, {
+            isStatic: true,
+            friction: 0,
+            restitution: 0,
+            render: { fillStyle: '#888' }
+          }),
+          () => {
+            const body = Bodies.rectangle(600, 450, 50, 50, {
+              isStatic: true,
+              render: { fillStyle: '#000' }
+            });
+            body.doesKill = true;
+            return body;
+          },
+          () => {
+            const portal = Bodies.rectangle(750, 350, 40, 40, {
+              isStatic: true,
+              isSensor: true,
+              render: { fillStyle: '#0f0' },
+              collisionFilter: { group: COLLISION_GROUP_PORTAL }
+            });
+            portal.nextLevel = "Test2";
+            return portal;
+          },
+          () => {
+            const body = Bodies.rectangle(200, 300, 40, 40, {
+              restitution: 0.5,
+              render: { fillStyle: '#f55' }
+            });
+            body.doesKill = true;
+            return body;
+          },
+          () => Bodies.rectangle(300, 300, 60, 60, {
+            restitution: 0.5,
+            render: { fillStyle: '#aaa' }
+          }),
+          () => {
+            const body = Bodies.circle(500, 100, 20, {
+              restitution: 0.5,
+              render: { fillStyle: '#f00' }
+            });
+            body.doesKill = true;
+            return body;
+          },
+          () => Bodies.circle(550, 100, 25, {
+            restitution: 0.9,
+            render: { fillStyle: '#0af' }
+          }),
+          () => Matter.Bodies.fromVertices(400, 100, customShapes.Bizeau, {
+            isStatic: false,
+            render: { fillStyle: '#f55' }
+          })
+        ]
+      },
+
+    1: {
+        name: "Welcome To The Game!",
+        spawn: {x: 100, y:300},
+        gravityY: 1.5,
+        bodies:[
+            () => Bodies.rectangle(window.innerWidth / 2, window.innerHeight - 50, window.innerWidth, 100, {
                 isStatic: true,
+                friction: 0,     // glissant
+                restitution: 0, // léger rebond (optionnel)
                 render: { fillStyle: '#888' }
-            }),
-
-            // ✅ Killer statique
-            (() => {
-                const body = Bodies.rectangle(600, 450, 50, 50, {
-                    isStatic: true,
-                    render: { fillStyle: '#000' }
-                });
-                body.doesKill = true;
-                return body;
-            })(),
-
-            // ✅ Portail
-            (() => {
-                const body = Bodies.rectangle(750, 350, 40, 40, {
-                    isStatic: true,
-                    isSensor: true,
-                    render: { fillStyle: '#0f0' },
-                    collisionFilter: { group: COLLISION_GROUP_PORTAL }
-                });
-                body.nextLevel = "Test2";
-                return body;
-            })(),
-
-            // ✅ Cube qui tue
-            (() => {
-                const body = Bodies.rectangle(200, 300, 40, 40, {
-                    restitution: 0.5,
-                    render: { fillStyle: '#f55' }
-                });
-                body.doesKill = true;
-                return body;
-            })(),
-
-            // ✅ Cube inoffensif
-            Bodies.rectangle(300, 300, 60, 60, {
-                restitution: 0.5,
-                render: { fillStyle: '#aaa' }
-            }),
-
-            // ✅ Balle tueuse
-            (() => {
-                const body = Bodies.circle(500, 100, 20, {
-                    restitution: 0.5,
-                    render: { fillStyle: '#f00' }
-                });
-                body.doesKill = true;
-                return body;
-            })(),
-
-            // ✅ Balle inoffensive
-            Bodies.circle(550, 100, 25, {
-                restitution: 0.9,
-                render: { fillStyle: '#0af' }
             })
         ]
     }
-    // Ajoute les autres niveaux de façon similaire
 };
 
+//Changer les défauts des valeurs dans initLevel() pas ici
 
-
-
+var jumpForce = 0.03;
+var jumpCooldownTime = 10; // nombre de ticks à attendre entre sauts (~166ms si 60fps)
+var moveForce = 0.00125;
+var airUpForce = 0.0025;
+var downForce = 0.0025;
+var doesCenterViewOnBall = true;
+var diesOffScreenPixels = -1;
+var voidY = 1000
 
 let ball; // déclaration globale
 const baseDensity = 0.001; // masse de base
@@ -200,20 +283,20 @@ function initLevel(levelId) {
         return;
     }
 
-    // Nettoyage
+    // Nettoyage complet du monde (mais pas du moteur lui-même)
     Composite.clear(engine.world, false);
+
+    // Reset variables de gameplay
     groundContacts = 0;
     canJump = false;
-
-    // Vider les objets interactifs précédents
     dynamicKillers.length = 0;
     portals.length = 0;
 
-    // Gravité
+    // Réglage de la gravité du moteur selon le niveau
     engine.gravity.y = level.gravityY ?? 1.5;
     engine.gravity.x = level.gravityX ?? 0;
 
-    // Créer la balle
+    // Création de la balle au point de spawn
     ball = Bodies.circle(level.spawn.x, level.spawn.y, 30, {
         restitution: level.ballRestitution ?? 0.5,
         friction: 0,
@@ -221,20 +304,35 @@ function initLevel(levelId) {
         render: { fillStyle: '#4cf' }
     });
     Composite.add(world, ball);
-    Body.setDensity(ball, baseDensity); // Masse par défaut
-    // Objets
-    level.bodies.forEach(body => {
+    Body.setDensity(ball, baseDensity);
+
+    // Réglages spécifiques (sauts, forces, etc.) selon le niveau
+    jumpForce = level.jumpForce ?? 0.03;
+    jumpCooldownTime = level.jumpCooldownTime ?? 10;
+    moveForce = level.moveForce ?? 0.00125;
+    airUpForce = level.airUpForce ?? 0.0025;
+    downForce = level.downForce ?? 0.0025;
+    doesCenterViewOnBall = level.doesCenterViewOnBall ?? true;
+    diesOffScreenPixels = level.diesOffScreenPixels ?? -1;
+    voidY = level.voidY ?? 1000;
+
+    // Ajout des autres corps (static/dynamiques) du niveau
+    level.bodies.forEach(createFn => {
+        const body = createFn(); // Appelle la fonction pour créer un NOUVEL objet
+        
         Composite.add(world, body);
-    
+      
         if (body.doesKill) {
-            dynamicKillers.push(body);
+          dynamicKillers.push(body);
         }
-    
+      
         if (typeof body.nextLevel !== 'undefined') {
-            portals.push(body);
+          portals.push(body);
         }
-    });     
+      });
+      
 }
+
 
 function death() {
     console.log('🪦 Mort : réinitialisation du niveau');
@@ -360,7 +458,8 @@ Events.on(engine, 'beforeUpdate', () => {
     }
 
     // Mort hors écran
-    const margin = 100;
+    if (diesOffScreenPixels >= 0) {
+    const margin = diesOffScreenPixels;
     const x = ball.position.x;
     const y = ball.position.y;
 
@@ -370,20 +469,31 @@ Events.on(engine, 'beforeUpdate', () => {
     ) {
         death();
     }
+    }
+    if (voidY) {
+        const y = ball.position.y;
+        if (y >= voidY) {
+            death();
+        }
+    }
 });
 
-function resizeCanvas() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+Events.on(engine, 'afterUpdate', () => {
+    if (doesCenterViewOnBall = true) {
+    if (!ball) return;
 
-    render.canvas.width = width;
-    render.canvas.height = height;
+    const centerX = ball.position.x;
+    const centerY = ball.position.y;
 
-    render.options.width = width;
-    render.options.height = height;
-}
+    const viewWidth = render.bounds.max.x - render.bounds.min.x;
+    const viewHeight = render.bounds.max.y - render.bounds.min.y;
 
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); // appel initial
-initLevel("Test")
+    render.bounds.min.x = centerX - viewWidth / 2;
+    render.bounds.min.y = centerY - viewHeight / 2;
+    render.bounds.max.x = centerX + viewWidth / 2;
+    render.bounds.max.y = centerY + viewHeight / 2;
+    }
+});
+
+initLevel(1)
 
