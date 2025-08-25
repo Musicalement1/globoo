@@ -174,7 +174,7 @@ document.addEventListener('keydown', event => {
     if (event.code === 'KeyD') {
         developerMode = !developerMode;
         console.log(`🛠️ Mode développeur : ${developerMode ? 'activé' : 'désactivé'}`);
-        
+
         if (developerMode) {
             Composite.add(world, mouseConstraint);
         } else {
@@ -525,6 +525,7 @@ window.addEventListener("keydown", (e) => {
 
 const levels = {
     "Test": {
+        developerMode: true,
         spawn: rel(0.05, 0.1), // ≈ (96, 108)
         gravityY: 1.5,
         ballRestitution: 0.75,
@@ -596,6 +597,7 @@ const levels = {
     },    
 
     "Test2": {
+        developerMode: true,
         name: "Challenge Begins - Fixed",
         //light: 0.5, //cool effect lel
         spawn: rel(0.05, 0.75),
@@ -917,6 +919,17 @@ function initLevel(levelId) {
     Composite.add(world, ball);
     Body.setDensity(ball, baseDensity);
 
+    //dev mode
+
+    if (level.developerMode != undefined) {
+        developerMode = level.developerMode
+    };
+    if (developerMode) {
+        Composite.add(world, mouseConstraint);
+    } else {
+        Composite.remove(world, mouseConstraint);
+    }
+    
     // Réglages spécifiques (sauts, forces, etc.) selon le niveau
     jumpForce = level.jumpForce ?? 0.03;
     jumpCooldownTime = level.jumpCooldownTime ?? 10;
