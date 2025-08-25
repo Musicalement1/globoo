@@ -1,9 +1,59 @@
 // DISCLAIMER: Some commentaries, variables and stuff here are in french as its at first just for me, sometimes I code in english, sometimes in french, it doesn't really matter for me, but for you maybe so be aware that both languages exist in this file.
 
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
 const WORLD_WIDTH = 1920;
 const WORLD_HEIGHT = 1080;
 
+
+function drawText(texte, x, y, couleur, police = "20px Arial", alpha = 1) {
+
+  ctx.save(); // Sauvegarde l'état du contexte
+  ctx.textAlign = "center";     // Centre horizontalement sur x
+  ctx.textBaseline = "middle"; // Centre verticalement sur y
+  ctx.globalAlpha = alpha; // Définit l'opacité globale
+  ctx.fillStyle = couleur; // Peut aussi être en rgba()
+  ctx.font = police;
+  ctx.fillText(texte, x, y);
+
+  ctx.restore(); // Restaure l'état du contexte (utile si tu veux dessiner autre chose ensuite)
+}
+
+
+function blendColorsHealth(healthRatio) {
+  // Interpolation entre rouge et vert
+  const r = Math.floor(255 * (1 - healthRatio));
+  const g = Math.floor(255 * healthRatio);
+  return `rgb(${r}, ${g}, 0)`;
+}
+
+/**
+ * Dessine une barre de vie sur un canvas existant.
+ * @param {CanvasRenderingContext2D} ctx - Contexte du canvas
+ * @param {number} health - Vie actuelle
+ * @param {number} maxHealth - Vie maximale
+ * @param {number} x - Position x de la barre
+ * @param {number} y - Position y de la barre
+ * @param {number} width - Largeur de la barre
+ * @param {number} height - Hauteur de la barre
+ */
+function drawHealthBar(health, maxHealth, ctx, x, y, width, height) {
+  const ratio = Math.max(0, Math.min(1, health / maxHealth));
+  const color = blendColorsHealth(ratio);
+
+  // Fond de la barre
+  ctx.fillStyle = '#444';
+  ctx.fillRect(x, y, width, height);
+
+  // Remplissage de la barre de vie
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, width * ratio, height);
+
+  // Contour
+  ctx.strokeStyle = '#000';
+  ctx.strokeRect(x, y, width, height);
+}
 //==light stuff vars==
 function lightOfSceneFunction(opacity) {
     // Clamp la valeur entre 0 et 1
@@ -108,6 +158,21 @@ const render = Render.create({
 
 Render.run(render);
 Runner.run(Runner.create(), engine);
+
+function worldToScreen(position, render) {
+  const bounds = render.bounds;
+  const canvas = render.canvas;
+  const viewWidth = bounds.max.x - bounds.min.x;
+  const viewHeight = bounds.max.y - bounds.min.y;
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+
+  return {
+    x: ((position.x - bounds.min.x) / viewWidth) * canvasWidth,
+    y: ((position.y - bounds.min.y) / viewHeight) * canvasHeight
+  };
+}
+
 
 const mouse = Mouse.create(render.canvas);
 
@@ -261,6 +326,7 @@ let currentQuestion = "";
 
 let choiceCallbackToCall = null;  // <-- Nouvelle variable pour stocker callback du choix
 
+const colorOfPurcentagedStuff = "#2e68ff"
 // === FORMATTAGE DU TEXTE ===
 function parseSegments(text) {
   const segments = [];
@@ -272,7 +338,7 @@ function parseSegments(text) {
       let end = text.indexOf('%', i + 1);
       if (end === -1) end = len;
       const content = text.slice(i + 1, end);
-      segments.push({ text: content, color: 'blue', italic: false });
+      segments.push({ text: content, color: colorOfPurcentagedStuff, italic: false });
       i = end + 1;
     } else if (text.slice(i, i + 2) === '**') {
       let end = text.indexOf('**', i + 2);
@@ -316,7 +382,7 @@ function startTyping() {
     if (!dialogueBox.lastChild || dialogueBox.lastChild.dataset.segIndex != segIndex) {
       const span = document.createElement('span');
       span.dataset.segIndex = segIndex;
-      span.style.color = segment.color === 'blue' ? 'blue' : '#eee';
+      span.style.color = segment.color === colorOfPurcentagedStuff ? colorOfPurcentagedStuff : '#eee';
       span.style.fontStyle = segment.italic ? 'italic' : 'normal';
       dialogueBox.appendChild(span);
     }
@@ -344,7 +410,7 @@ function finishTyping() {
   const segments = parseSegments(fullText);
   segments.forEach(seg => {
     const span = document.createElement('span');
-    span.style.color = seg.color === 'blue' ? 'blue' : '#eee';
+    span.style.color = seg.color === colorOfPurcentagedStuff ? colorOfPurcentagedStuff : '#eee';
     span.style.fontStyle = seg.italic ? 'italic' : 'normal';
     span.innerHTML = seg.text;
     dialogueBox.appendChild(span);
@@ -366,7 +432,7 @@ function renderChoice() {
   // Question stylée
   const questionSegments = parseSegments(currentQuestion);
   questionSegments.forEach(seg => {
-    content += `<span style="color:${seg.color === 'blue' ? 'blue' : '#eee'};font-style:${seg.italic ? 'italic' : 'normal'}">${seg.text}</span>`;
+    content += `<span style="color:${seg.color === colorOfPurcentagedStuff ? colorOfPurcentagedStuff : '#eee'};font-style:${seg.italic ? 'italic' : 'normal'}">${seg.text}</span>`;
   });
 
   content += "<br><br>";
@@ -376,7 +442,7 @@ function renderChoice() {
     const segments = parseSegments(choice.text);
     content += prefix;
     segments.forEach(seg => {
-      content += `<span style="color:${seg.color === 'blue' ? 'blue' : '#eee'};font-style:${seg.italic ? 'italic' : 'normal'}">${seg.text}</span>`;
+      content += `<span style="color:${seg.color === colorOfPurcentagedStuff ? colorOfPurcentagedStuff : '#eee'};font-style:${seg.italic ? 'italic' : 'normal'}">${seg.text}</span>`;
     });
     content += "<br>";
   });
@@ -516,6 +582,13 @@ window.addEventListener("keydown", (e) => {
 });
 
 
+function normalizeDamageFormat(body) {
+  if (body.damage !== undefined && !Array.isArray(body.damage)) {
+    body.damage = [body.damage, 0];
+  }
+}
+
+
   
 // Example lel
 //showDialogue("Je pense que la vie n'est qu'une question de temps, et parfois, il faut savoir saisir les moments qui comptent vraiment. Car chaque seconde qui passe est une chance unique de changer quelque chose, d'aimer, de créer, ou simplement d'exister pleinement. Car oui, la Vie est quelque chose de formidable qu'il ne faut point oblier");
@@ -528,10 +601,11 @@ const levels = {
         developerMode: true,
         spawn: rel(0.05, 0.1), // ≈ (96, 108)
         gravityY: 1.5,
-        ballRestitution: 0.75,
+        //ballRestitution: 0.75,
         frictionAir: 0.001,
         bodies: [
             () => Bodies.rectangle(rel(0.21, 0.46).x, rel(0.46, 0.46).y, 300, 20, {
+                restitution: 1,
                 isStatic: true,
                 render: { fillStyle: '#888' }
             }),
@@ -546,7 +620,7 @@ const levels = {
                     isStatic: true,
                     render: { fillStyle: '#000' }
                 });
-                body.doesKill = true;
+                body.damage = 50;
                 return body;
             },
             () => {
@@ -564,7 +638,7 @@ const levels = {
                     restitution: 0.5,
                     render: { fillStyle: '#f55' }
                 });
-                body.doesKill = true;
+                body.damage = [50, 2];
                 return body;
             },
             () => Bodies.rectangle(rel(0.16, 0.28).x, rel(0.28, 0.28).y, 60, 60, {
@@ -576,7 +650,7 @@ const levels = {
                     restitution: 0.5,
                     render: { fillStyle: '#f00' }
                 });
-                body.doesKill = true;
+                body.damage = [50, 50];
                 return body;
             },
             () => Bodies.circle(rel(0.29, 0.09).x, rel(0.09, 0.09).y, 25, {
@@ -625,7 +699,7 @@ const levels = {
                     isStatic: true,
                     render: { fillStyle: '#f00' }
                 });
-                killer.doesKill = true;
+                killer.damage = 50;
                 return killer;
             },
     
@@ -855,7 +929,12 @@ const levels = {
 
     // Niveau sans rien
     "MainMenu": {
+        showHealthBar: false,
         bodies: []
+    },
+    "Dead": {
+      showHealthBar: false,
+      bodies: []
     }
     
     
@@ -865,10 +944,11 @@ const levels = {
 };
 
 //Changer les défauts des valeurs dans initLevel() pas ici
+var showHealthBar = true;
 
-var jumpForce = 0.03;
+var jumpForce = 0.1;
 var jumpCooldownTime = 10; // nombre de ticks à attendre entre sauts (~166ms si 60fps)
-var moveForce = 0.00125;
+var moveForce = 0.002;
 var airUpForce = 0.0025;
 var downForce = 0.0025;
 var doesCenterViewOnBall = true;
@@ -876,7 +956,13 @@ var diesOffScreenPixels = -1;
 var voidY = 1000
 
 let ball; // déclaration globale
-const baseDensity = 0.001; // masse de base
+var ballHealth = 100;
+var ballMaxHealth = 100;
+var healthRegen = 0.01
+
+const baseDensity = 0.00105; // masse de base
+
+
 function initLevel(levelId) {
     lightOfScene = 0
     updateRenderView();
@@ -911,14 +997,16 @@ function initLevel(levelId) {
     }
     // Création de la balle au point de spawn
     ball = Bodies.circle(spawnX, spawnY, 30, {
-        restitution: level.ballRestitution ?? 0.75,
+        restitution: level.ballRestitution ?? 0.5,
         friction: level.ballFriction ?? 0,
         frictionAir: level.frictionAir ?? 0.001,
+        density: level.ballDensity ?? 0.00105, // 0.001 default density, also change const baseDensity
         render: { fillStyle: '#4cf' }
     });
     Composite.add(world, ball);
     Body.setDensity(ball, baseDensity);
-
+    //health bar
+    showHealthBar = level.showHealthBar ?? true
     //dev mode
 
     if (level.developerMode != undefined) {
@@ -931,15 +1019,17 @@ function initLevel(levelId) {
     }
     
     // Réglages spécifiques (sauts, forces, etc.) selon le niveau
-    jumpForce = level.jumpForce ?? 0.03;
+    jumpForce = level.jumpForce ?? 0.1;
     jumpCooldownTime = level.jumpCooldownTime ?? 10;
-    moveForce = level.moveForce ?? 0.00125;
+    moveForce = level.moveForce ?? 0.002;
     airUpForce = level.airUpForce ?? 0.0025;
     downForce = level.downForce ?? 0.0025;
     doesCenterViewOnBall = level.doesCenterViewOnBall ?? true;
     diesOffScreenPixels = level.diesOffScreenPixels ?? -1;
     voidY = level.voidY ?? 1000;
-
+    ballHealth = level.ballHealth ?? 100;
+    ballMaxHealth = level.ballMaxHealth ?? 100;
+    healthRegen = level.healthRegen ?? 0.1;
     // Ajout des autres corps (static/dynamiques) du niveau
     level.bodies.forEach(createFn => {
         const body = createFn(); // Appelle la fonction pour créer un NOUVEL objet
@@ -954,11 +1044,26 @@ function initLevel(levelId) {
         if (body.trueMass) {
             Body.setMass(body, body.trueMass)
         }*/
-        if (body.doesKill) {
-          dynamicKillers.push(body);
-          body.render.strokeStyle = "#fff"//getOppositeColor(body.render.fillStyle);
-          body.render.lineWidth = 3;
+        if (body.damage !== undefined) {
+          /*let realBodyDamage;
+        
+          // Si damage est un tableau [valeur, variation], on le garde tel quel
+          if (Array.isArray(body.damage)) {
+            realBodyDamage = body.damage;
+          } else {
+            // Sinon, on le reformate en [valeur, 0]
+            realBodyDamage = [body.damage, 0];
+          }*/
+
+          normalizeDamageFormat(body);
+
+          if (body.damage[0] > 0) {
+            dynamicKillers.push(body);
+            body.render.strokeStyle = "#fff"; // getOppositeColor(body.render.fillStyle);
+            body.render.lineWidth = 3;
+          }
         }
+        
       
         if (typeof body.nextLevel !== 'undefined') {
           portals.push(body);
@@ -967,10 +1072,29 @@ function initLevel(levelId) {
       
 }
 
-
+var currentGameState = 1;
+var levelBeforeDeath = 1;
+var gameStateBeforeDeath = 1;
 function death() {
-    console.log('🪦 Mort : réinitialisation du niveau');
-    initLevel(currentLevelId);
+    levelBeforeDeath = currentLevelId
+    gameStateBeforeDeath = currentGameState
+    initLevel("Dead")
+    currentGameState = "Dead";
+    makeDialogue({
+      1: "It looks like you died..",
+      2: {
+        text: "What do you want to do?",
+        choices: [
+          {text: "%Respawn%", callback: () => {
+            initLevel(levelBeforeDeath)
+            currentGameState = gameStateBeforeDeath
+          }},
+          {text: "Go Back To Main Menu", callback: () => {
+            loadGameState(1);
+          }}
+        ]
+      }
+    })
 }
 
 
@@ -991,13 +1115,74 @@ document.addEventListener('keyup', event => {
         keys[event.code] = false;
     }
 });
-document.addEventListener('keydown', event => {
+/*document.addEventListener('keydown', event => {
     if (event.code === 'ArrowUp' && canJump) {
         Body.applyForce(ball, ball.position, { x: 0, y: -jumpForce });
         canJump = false;
     }
-});
+});*/
 // Collision entre la balle et les sols
+
+
+const damageNumbers = [];
+
+const criticalHitPurcentage = 0.6
+
+function makeDamageNumber(amount, x, y) {
+  const isCritical = amount > ballMaxHealth * criticalHitPurcentage;
+  const color = isCritical ? "red" : "orange";
+
+  const velocity = {
+    x: (Math.random() - 0.5) * 1.5, // Léger mouvement gauche/droite
+    y: -(Math.random() * 1.5 + 1),  // Toujours vers le haut
+  };
+
+  damageNumbers.push({
+    x,
+    y,
+    vx: velocity.x,
+    vy: velocity.y,
+    alpha: 1,
+    color,
+    amount,
+    gravity: 0.05,
+    fadeRate: 0.02,
+    font: "20px Arial"
+  });
+}
+
+function updateDamageNumbers() {
+
+  for (let i = damageNumbers.length - 1; i >= 0; i--) {
+    const dmg = damageNumbers[i];
+
+    // Mise à jour de la position
+    dmg.x += dmg.vx;
+    dmg.y += dmg.vy;
+    dmg.vy += dmg.gravity;
+
+    // Diminution de l'alpha
+    dmg.alpha -= dmg.fadeRate;
+
+    // Dessin
+    ctx.save();
+    ctx.globalAlpha = Math.max(dmg.alpha, 0);
+    ctx.fillStyle = dmg.color;
+    ctx.font = dmg.font;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(dmg.amount, dmg.x, dmg.y);
+    ctx.restore();
+
+    // Suppression si invisible
+    if (dmg.alpha <= 0) {
+      damageNumbers.splice(i, 1);
+    }
+  }
+}
+
+
+
 Events.on(engine, 'collisionStart', event => {
     for (let pair of event.pairs) {
         const { bodyA, bodyB } = pair;
@@ -1012,7 +1197,22 @@ Events.on(engine, 'collisionStart', event => {
 
             // Collision avec objet mortel
             if (dynamicKillers.includes(other)) {
-                death();
+              let finalDamage = 0;
+              if (other.damage[1] != undefined) {
+                // damage = [50, 2] = retourne une valeur entre 48 et 52 aléatoirement
+                let min = other.damage[0] - other.damage[1];
+                let max = other.damage[0] + other.damage[1];
+                finalDamage = Math.floor(Math.random() * (max - min + 1)) + min;                
+              } else {
+                if (other.damage[0]) {
+                  finalDamage = other.damage[0]
+                } else {
+                finalDamage = other.damage
+                }
+              }
+              ballHealth -= finalDamage
+              const screenPos = worldToScreen(ball.position, render);
+              makeDamageNumber(finalDamage, screenPos.x, screenPos.y);              
             }
 
             // Collision avec portail
@@ -1049,6 +1249,21 @@ const heavyMultiplier = 7.5;
 
 // Appliquer les forces à chaque tick
 Events.on(engine, 'beforeUpdate', () => {
+
+  //Death if damage
+
+    if (ballHealth <= 0) {
+      death();
+    } else {//Regen
+      if (ballHealth < ballMaxHealth) {
+        if ((ballHealth + healthRegen) > ballMaxHealth) {
+          ballHealth = ballMaxHealth //pour éviter les 100.999999
+        } else {
+        ballHealth += healthRegen
+        }
+      }
+    }
+    ball.render.opacity = (ballHealth / ballMaxHealth)
     canJump = groundContacts > 0;
 
     // Gestion du heavy mode (Espace)
@@ -1189,10 +1404,20 @@ Events.on(engine, 'afterUpdate', () => {
               }, () => {
                 console.log("Dialogue terminé");
               });  */
-var currentGameState = 1
 
-
+//const healthBarFreeSpace = 100
+/*let gameOverFonts = ["'Arial Black'","Impact","Georgia","'Courier New'","Arial"]
+function getRandomGameOverFont() {
+  return gameOverFonts[Math.floor(Math.random() * gameOverFonts.length + 1)]
+} */
 Matter.Events.on(render, 'afterRender', function() {
+
+  if (currentGameState == "Dead") {
+    drawText("Game Over", window.innerWidth / 2, window.innerHeight / 2, "red", "72px 'Arial Black'");
+  }
+
+
+
   // Transition vers la lumière cible
   if (Math.abs(lightOfScene - targetLightLevel) > 0.001) {
     if (lightOfScene < targetLightLevel) {
@@ -1205,6 +1430,15 @@ Matter.Events.on(render, 'afterRender', function() {
   }
 
   lightOfSceneFunction(lightOfScene);
+  // ==Barre de vie==
+  //drawHealthBar(ballHealth, ballMaxHealth, ctx, healthBarFreeSpace, window.innerHeight - 10, window.innerWidth - healthBarFreeSpace * 2, 10)
+  if (showHealthBar == true) {
+    drawText(Math.round(ballHealth/* * 100*/)/* / 100*/, (Math.min(ballMaxHealth, 250) / 2) + 10, 40, "white")
+    drawHealthBar(ballHealth, ballMaxHealth, ctx, 10, 50, Math.min(ballMaxHealth, 250)/* plus tu as de vie max plus la barre est grande */, 10)
+  }
+
+  // == Damage Numbers //
+  updateDamageNumbers()
 });
 
   
@@ -1220,7 +1454,9 @@ function loadGameState(stateId) {
                 2: {
                     text: "I am %The Great Simulator%, your computer. What do you want to do?",
                     choices: [
-                        {text: "%Start% a New Simulation", callback: () => {console.log("OK")}},
+                        {text: "%Start% a New Simulation", callback: () => {
+                          showDialogue("This is Coming Soon.")
+                        }},
                         {text: "%Load% a Simulation"},
                         {text: "Go in %Test% Level", callback: () => {
                             showDialogue("Once upon a time...", () => {initLevel("Test")})
