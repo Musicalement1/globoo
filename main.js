@@ -205,6 +205,71 @@ document.addEventListener('keyup', event => {
 let currentLevelId = 1; // valeur par défaut
 const dynamicKillers = [];
 const portals = [];
+// == DIALOGUE ==//
+
+let canMove = true; // global
+
+const dialogueBox = document.getElementById("dialogueBox");
+
+let dialoguePages = [];
+let currentPage = 0;
+let dialogueActive = false;
+
+// Fonction pour découper proprement le texte en pages sans couper les mots
+function paginateText(text, maxCharsPerPage) {
+  const words = text.split(' ');
+  const pages = [];
+  let currentPageText = '';
+
+  for (const word of words) {
+    // +1 pour l'espace qui sera ajouté
+    if ((currentPageText + word).length + 1 > maxCharsPerPage) {
+      // Page pleine, on pousse la page actuelle et on recommence
+      pages.push(currentPageText.trim());
+      currentPageText = word + ' ';
+    } else {
+      currentPageText += word + ' ';
+    }
+  }
+  if (currentPageText.trim().length > 0) {
+    pages.push(currentPageText.trim());
+  }
+
+  return pages;
+}
+
+function showDialogue(text) {
+  const maxCharsPerPage = 280; // ajuste selon ta boîte et taille police
+  dialoguePages = paginateText(text, maxCharsPerPage);
+  currentPage = 0;
+  dialogueActive = true;
+  canMove = false; // Bloque le mouvement
+
+  dialogueBox.style.display = "block";
+  dialogueBox.textContent = dialoguePages[currentPage];
+}
+
+function hideDialogue() {
+  dialogueActive = false;
+  canMove = true; // Reautorise le mouvement
+  dialogueBox.style.display = "none";
+}
+
+window.addEventListener("keydown", (e) => {
+  if (dialogueActive && e.code === "Space") {
+    e.preventDefault();
+    if(currentPage < dialoguePages.length -1) {
+      currentPage++;
+      dialogueBox.textContent = dialoguePages[currentPage];
+    } else {
+      hideDialogue();
+    }
+  }
+});
+
+// Example lel
+//showDialogue("Je pense que la vie n'est qu'une question de temps, et parfois, il faut savoir saisir les moments qui comptent vraiment. Car chaque seconde qui passe est une chance unique de changer quelque chose, d'aimer, de créer, ou simplement d'exister pleinement. Car oui, la Vie est quelque chose de formidable qu'il ne faut point oblier");
+
 
 // ===LEVELS=== //
 
@@ -291,12 +356,12 @@ const levels = {
             () => Bodies.rectangle(relX(0.5), relY(1) - 50, WORLD_WIDTH, 100, {
                 isStatic: true,
                 friction: 0,
-                restitution: 0,
+                restitution: 0.5,
                 render: { fillStyle: '#666' }
             }),
     
             // === PLATEFORME DE SAUT DE DÉPART ===
-            () => Bodies.rectangle(relX(0.2), relY(0.65), 200, 20, {
+            () => Bodies.rectangle(relX(0.2), relY(0.75), 200, 20, {
                 isStatic: true,
                 render: { fillStyle: '#888' }
             }),
@@ -367,8 +432,17 @@ const levels = {
                     }
                 });
                 var stack = Composites.stack(250, 50, 6, 3, 0, 0, function(x, y) {
-                    return Bodies.rectangle(x, y, 50, 50, 30);
+                    return Bodies.rectangle(x, y, 50, 50, {
+                        restitution: 1,
+                        //chamfer: { radius: 20 }
+                    });
                 });
+                /*
+                                var stack = Composites.stack(250, 50, 6, 3, 0, 0, function(x, y) {
+                    return Bodies.circle(x, y, 30, {
+                        restitution: 0.75
+                    });
+                });*/
                 var s = Bodies.rectangle(770, 490, 220, 380, { 
                     isStatic: false, 
                     chamfer: { radius: 20 },
@@ -380,7 +454,7 @@ const levels = {
                     stack,
                     Bodies.rectangle(30, 490, 220, 380, { 
                         isStatic: true, 
-                        chamfer: { radius: 20 }
+                        chamfer: { radius: 200 }
                     }),
                     /*Bodies.rectangle(770, 490, 220, 380, { 
                         isStatic: true, 
@@ -502,7 +576,21 @@ const levels = {
                 Composite.add(world, [body, constraint]);
             },
             
+            () => {
+                var body = Bodies.polygon(1600, 750, 4, 30, {
+                    frictionAir: 0,
+                    restitution: 2
+                });
+
+                var constraint = Constraint.create({
+                    pointA: { x: 1600, y: 600 },
+                    bodyB: body,
+                    pointB: { x: -10, y: -7 },
+                    stiffness: 1
+                });
             
+                Composite.add(world, [body, constraint]);
+            },
             
             
         ]
@@ -673,19 +761,19 @@ let canJump = false;
 let jumpCooldown = 0; // pour limiter la fréquence des sauts
 
 let heavyMode = false;
-const heavyMultiplier = 3;
+const heavyMultiplier = 7.5;
 
 // Appliquer les forces à chaque tick
 Events.on(engine, 'beforeUpdate', () => {
     canJump = groundContacts > 0;
 
     // Gestion du heavy mode (Espace)
-    if (keys.Space && !heavyMode) {
+    if (keys.Space && !heavyMode && canMove) {
         Body.setDensity(ball, baseDensity * heavyMultiplier);
         ball.render.strokeStyle = '#fff';
         ball.render.lineWidth = 5;
         heavyMode = true;
-    } else if (!keys.Space && heavyMode) {
+    } else if (!keys.Space && heavyMode && canMove) {
         Body.setDensity(ball, baseDensity);
         ball.render.strokeStyle = null;
         ball.render.lineWidth = 0;
@@ -699,23 +787,23 @@ Events.on(engine, 'beforeUpdate', () => {
     }
 
     // Saut automatique si on maintient la touche et que le cooldown est écoulé
-    if (keys.ArrowUp && canJump && jumpCooldown === 0) {
+    if (keys.ArrowUp && canJump && jumpCooldown === 0 && canMove) {
         Body.applyForce(ball, ball.position, { x: 0, y: -jumpForce * moveFactor });
         jumpCooldown = jumpCooldownTime;
         canJump = false;
     }
 
     // Mouvements avec facteur ajusté
-    if (keys.ArrowLeft) {
+    if (keys.ArrowLeft && canMove) {
         Body.applyForce(ball, ball.position, { x: -moveForce * moveFactor, y: 0 });
     }
-    if (keys.ArrowRight) {
+    if (keys.ArrowRight && canMove) {
         Body.applyForce(ball, ball.position, { x: moveForce * moveFactor, y: 0 });
     }
-    if (keys.ArrowUp && !canJump) {
+    if (keys.ArrowUp && !canJump && canMove) {
         Body.applyForce(ball, ball.position, { x: 0, y: -airUpForce * moveFactor });
     }
-    if (keys.ArrowDown) {
+    if (keys.ArrowDown && canMove) {
         Body.applyForce(ball, ball.position, { x: 0, y: downForce * moveFactor });
     }
 
@@ -758,5 +846,3 @@ Events.on(engine, 'afterUpdate', () => {
 });
 
 initLevel("Test2")
-
-
