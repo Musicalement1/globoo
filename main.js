@@ -1,3 +1,5 @@
+// DISCLAIMER: Some commentaries, variables and stuff here are in french as its at first just for me, sometimes I code in english, sometimes in french, it doesn't really matter for me, but for you maybe so be aware that both languages exist in this file.
+
 
 const WORLD_WIDTH = 1920;
 const WORLD_HEIGHT = 1080;
@@ -207,66 +209,111 @@ const dynamicKillers = [];
 const portals = [];
 // == DIALOGUE ==//
 
-let canMove = true; // global
+let canMove = true;
 
 const dialogueBox = document.getElementById("dialogueBox");
 
-let dialoguePages = [];
-let currentPage = 0;
 let dialogueActive = false;
+let dialogueCallback = null;
 
-// Fonction pour découper proprement le texte en pages sans couper les mots
-function paginateText(text, maxCharsPerPage) {
-  const words = text.split(' ');
-  const pages = [];
-  let currentPageText = '';
+let fullText = "";
+let visibleText = "";
+let charIndex = 0;
+let isTyping = false;
+let typingSpeed = 25; // ms entre chaque lettre
+let typingInterval = null;
 
-  for (const word of words) {
-    // +1 pour l'espace qui sera ajouté
-    if ((currentPageText + word).length + 1 > maxCharsPerPage) {
-      // Page pleine, on pousse la page actuelle et on recommence
-      pages.push(currentPageText.trim());
-      currentPageText = word + ' ';
-    } else {
-      currentPageText += word + ' ';
-    }
-  }
-  if (currentPageText.trim().length > 0) {
-    pages.push(currentPageText.trim());
-  }
+let currentStyle = {
+  font: '18px Arial',
+  color: '#eee'
+};
 
-  return pages;
-}
-
-function showDialogue(text) {
-  const maxCharsPerPage = 280; // ajuste selon ta boîte et taille police
-  dialoguePages = paginateText(text, maxCharsPerPage);
-  currentPage = 0;
+function showDialogue(text, onFinish = null, options = {}) {
+  // options: { font: '...', color: '...' }
+  fullText = text;
+  visibleText = "";
+  charIndex = 0;
+  dialogueCallback = onFinish;
   dialogueActive = true;
-  canMove = false; // Bloque le mouvement
+  canMove = false;
+  isTyping = true;
+
+  // Applique les styles si fournis
+  currentStyle.font = options.font || '18px Arial';
+  currentStyle.color = options.color || '#eee';
+
+  // Applique le style directement au dialogueBox
+  dialogueBox.style.font = currentStyle.font;
+  dialogueBox.style.color = currentStyle.color;
 
   dialogueBox.style.display = "block";
-  dialogueBox.textContent = dialoguePages[currentPage];
+  dialogueBox.textContent = "";
+
+  startTyping();
+}
+
+function startTyping() {
+  typingInterval = setInterval(() => {
+    if (charIndex < fullText.length) {
+      visibleText += fullText[charIndex];
+      dialogueBox.textContent = visibleText;
+      charIndex++;
+    } else {
+      finishTyping();
+    }
+  }, typingSpeed);
+}
+
+function finishTyping() {
+  clearInterval(typingInterval);
+  typingInterval = null;
+  isTyping = false;
+  dialogueBox.textContent = fullText;
 }
 
 function hideDialogue() {
   dialogueActive = false;
-  canMove = true; // Reautorise le mouvement
+  canMove = true;
   dialogueBox.style.display = "none";
+  if (typeof dialogueCallback === 'function') {
+    const callback = dialogueCallback;
+    dialogueCallback = null;
+    callback();
+  }
 }
 
 window.addEventListener("keydown", (e) => {
   if (dialogueActive && e.code === "Space") {
     e.preventDefault();
-    if(currentPage < dialoguePages.length -1) {
-      currentPage++;
-      dialogueBox.textContent = dialoguePages[currentPage];
+
+    if (isTyping) {
+      finishTyping(); // skip animation
     } else {
-      hideDialogue();
+      hideDialogue(); // dialogue terminé, on ferme
     }
   }
 });
 
+
+function makeDialogue(dialogueObject, finalCallback = null) {
+    const keys = Object.keys(dialogueObject).map(Number).sort((a, b) => a - b);
+    const dialogues = keys.map(k => dialogueObject[k]);
+  
+    function next(index) {
+      if (index < dialogues.length - 1) {
+        const { text, font, color } = dialogues[index];
+        showDialogue(text, () => next(index + 1), { font, color });
+      } else {
+        const { text, font, color } = dialogues[index];
+        showDialogue(text, finalCallback, { font, color });
+      }
+    }
+  
+    if (dialogues.length > 0) {
+      next(0);
+    }
+  }
+  
 // Example lel
 //showDialogue("Je pense que la vie n'est qu'une question de temps, et parfois, il faut savoir saisir les moments qui comptent vraiment. Car chaque seconde qui passe est une chance unique de changer quelque chose, d'aimer, de créer, ou simplement d'exister pleinement. Car oui, la Vie est quelque chose de formidable qu'il ne faut point oblier");
 
@@ -594,6 +641,15 @@ const levels = {
             
             
         ]
+    },
+
+
+
+
+
+    // Niveau sans rien
+    "Cinématique Du Début": {
+        bodies: []
     }
     
     
@@ -616,13 +672,14 @@ var voidY = 1000
 let ball; // déclaration globale
 const baseDensity = 0.001; // masse de base
 function initLevel(levelId) {
+    updateRenderView();
     currentLevelId = levelId;
     const level = levels[levelId];
     if (!level) {
         console.error(`Le niveau ${levelId} n'existe pas.`);
         return;
     }
-
+    if (level == undefined) return;
     // Nettoyage complet du monde (mais pas du moteur lui-même)
     Composite.clear(engine.world, false);
 
@@ -635,9 +692,12 @@ function initLevel(levelId) {
     // Réglage de la gravité du moteur selon le niveau
     engine.gravity.y = level.gravityY ?? 1.5;
     engine.gravity.x = level.gravityX ?? 0;
-
+    if (level.spawn != undefined) {
+        var spawnX = level.spawn.x;
+        var spawnY = level.spawn.y;
+    }
     // Création de la balle au point de spawn
-    ball = Bodies.circle(level.spawn.x, level.spawn.y, 30, {
+    ball = Bodies.circle(spawnX, spawnY, 30, {
         restitution: level.ballRestitution ?? 0.75,
         friction: level.ballFriction ?? 0,
         frictionAir: level.frictionAir ?? 0.001,
@@ -810,8 +870,10 @@ Events.on(engine, 'beforeUpdate', () => {
     // Mort hors écran
     if (diesOffScreenPixels >= 0) {
     const margin = diesOffScreenPixels;
-    const x = ball.position.x;
-    const y = ball.position.y;
+    if (ball.position != undefined)  {
+        var x = ball.position.x;
+        var y = ball.position.y;
+    }
 
     if (
         x < -margin || x > render.canvas.width + margin ||
@@ -822,7 +884,7 @@ Events.on(engine, 'beforeUpdate', () => {
     }
     if (voidY) {
         const y = ball.position.y;
-        if (y >= voidY) {
+        if (y >= voidY && y != undefined) {
             death();
         }
     }
@@ -845,4 +907,55 @@ Events.on(engine, 'afterUpdate', () => {
     }
 });
 
-initLevel("Test2")
+
+
+
+
+
+
+
+/* example:
+            makeDialogue(
+                {
+                  1: {
+                    text: "Ceci est une intro.",
+                    font: "bold 22px Arial",
+                    color: "#fff"
+                  },
+                  2: {
+                    text: "Chaque ligne a son propre style !",
+                    font: "italic 20px 'Courier New'",
+                    color: "#ff00ff"
+                  },
+                  3: {
+                    text: "Et à la fin, on continue l'histoire.",
+                    font: "20px Georgia",
+                    color: "#00ff00"
+                  }
+                },
+                () => {//à la fin du dialogue:
+                  loadGameState(2)
+                }
+              );
+
+              (showDialogue est la version "light" si l'on puis dire)
+*/
+var currentGameState = 1
+
+function loadGameState(stateId) {
+    currentGameState = stateId
+    switch(stateId) {
+        /// == Cinématique du début == ///
+        case 1:
+            initLevel("Cinématique Du Début")
+            render.options.background = "#000"
+            showDialogue("Il y a bien longtemps...", () => {
+                loadGameState(2)
+            })
+        break;
+        case 2:
+            initLevel("Test")
+        break;
+    }
+}
+loadGameState(currentGameState)
