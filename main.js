@@ -4,6 +4,33 @@
 const WORLD_WIDTH = 1920;
 const WORLD_HEIGHT = 1080;
 
+//==light stuff vars==
+function lightOfSceneFunction(opacity) {
+    // Clamp la valeur entre 0 et 1
+    opacity = Math.max(0, Math.min(1, opacity));
+  
+    // Si l'opacité est 1, pas besoin de dessiner un calque noir
+    if (opacity >= 1) return;
+  
+    const ctx = render.context;
+    const width = render.canvas.width;
+    const height = render.canvas.height;
+  
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${1 - opacity})`; // 1 = normal → 0 d’ombre
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+  var lightOfScene = 1
+  let targetLightLevel = 1;  // objectif
+  let lightTransitionSpeed = 0.01; // vitesse de transition
+  
+  function setTargetLight(level) {
+    targetLightLevel = Math.max(0, Math.min(1, level)); // clamp entre 0 et 1
+  }
+
+//=== ====
+
 function convertToObjects(coordList) {
     return coordList.map(([x, y]) => ({ x, y }));
   }  
@@ -210,6 +237,9 @@ const portals = [];
 // == DIALOGUE ==//
 
 let canMove = true;
+let dialogueMode = "text"; // "text" ou "choice"
+let choices = [];
+let selectedChoiceIndex = 0;
 
 const dialogueBox = document.getElementById("dialogueBox");
 
@@ -217,10 +247,9 @@ let dialogueActive = false;
 let dialogueCallback = null;
 
 let fullText = "";
-let visibleText = "";
-let charIndex = 0;
+let typingIndex = 0;
 let isTyping = false;
-let typingSpeed = 25; // ms entre chaque lettre
+let typingSpeed = 25;
 let typingInterval = null;
 
 let currentStyle = {
@@ -228,91 +257,265 @@ let currentStyle = {
   color: '#eee'
 };
 
-function showDialogue(text, onFinish = null, options = {}) {
-  // options: { font: '...', color: '...' }
-  fullText = text;
-  visibleText = "";
-  charIndex = 0;
-  dialogueCallback = onFinish;
-  dialogueActive = true;
-  canMove = false;
-  isTyping = true;
+let currentQuestion = "";
 
-  // Applique les styles si fournis
-  currentStyle.font = options.font || '18px Arial';
-  currentStyle.color = options.color || '#eee';
+let choiceCallbackToCall = null;  // <-- Nouvelle variable pour stocker callback du choix
 
-  // Applique le style directement au dialogueBox
-  dialogueBox.style.font = currentStyle.font;
-  dialogueBox.style.color = currentStyle.color;
+// === FORMATTAGE DU TEXTE ===
+function parseSegments(text) {
+  const segments = [];
+  let i = 0;
+  const len = text.length;
 
-  dialogueBox.style.display = "block";
-  dialogueBox.textContent = "";
+  while (i < len) {
+    if (text[i] === '%') {
+      let end = text.indexOf('%', i + 1);
+      if (end === -1) end = len;
+      const content = text.slice(i + 1, end);
+      segments.push({ text: content, color: 'blue', italic: false });
+      i = end + 1;
+    } else if (text.slice(i, i + 2) === '**') {
+      let end = text.indexOf('**', i + 2);
+      if (end === -1) end = len;
+      const content = text.slice(i + 2, end);
+      segments.push({ text: content, color: 'normal', italic: true });
+      i = end + 2;
+    } else {
+      let nextPercent = text.indexOf('%', i);
+      let nextItalic = text.indexOf('**', i);
+      let nextPos = Math.min(
+        nextPercent === -1 ? len : nextPercent,
+        nextItalic === -1 ? len : nextItalic
+      );
+      const content = text.slice(i, nextPos);
+      segments.push({ text: content, color: 'normal', italic: false });
+      i = nextPos;
+    }
+  }
 
-  startTyping();
+  return segments;
 }
 
+// === AFFICHAGE LETTRE PAR LETTRE ===
 function startTyping() {
-  typingInterval = setInterval(() => {
-    if (charIndex < fullText.length) {
-      visibleText += fullText[charIndex];
-      dialogueBox.textContent = visibleText;
-      charIndex++;
-    } else {
+  isTyping = true;
+  dialogueBox.innerHTML = "";
+
+  const segments = parseSegments(fullText);
+  let segIndex = 0;
+  let charIndex = 0;
+
+  function addNextChar() {
+    if (segIndex >= segments.length) {
       finishTyping();
+      return;
     }
-  }, typingSpeed);
+
+    const segment = segments[segIndex];
+
+    if (!dialogueBox.lastChild || dialogueBox.lastChild.dataset.segIndex != segIndex) {
+      const span = document.createElement('span');
+      span.dataset.segIndex = segIndex;
+      span.style.color = segment.color === 'blue' ? 'blue' : '#eee';
+      span.style.fontStyle = segment.italic ? 'italic' : 'normal';
+      dialogueBox.appendChild(span);
+    }
+
+    const currentSpan = dialogueBox.lastChild;
+    currentSpan.textContent += segment.text[charIndex];
+    charIndex++;
+
+    if (charIndex >= segment.text.length) {
+      segIndex++;
+      charIndex = 0;
+    }
+  }
+
+  typingInterval = setInterval(addNextChar, typingSpeed);
 }
 
 function finishTyping() {
   clearInterval(typingInterval);
   typingInterval = null;
   isTyping = false;
-  dialogueBox.textContent = fullText;
+
+  dialogueBox.innerHTML = "";
+
+  const segments = parseSegments(fullText);
+  segments.forEach(seg => {
+    const span = document.createElement('span');
+    span.style.color = seg.color === 'blue' ? 'blue' : '#eee';
+    span.style.fontStyle = seg.italic ? 'italic' : 'normal';
+    span.innerHTML = seg.text;
+    dialogueBox.appendChild(span);
+  });
+
+  // Après fin de la frappe, si on est en mode choix, on affiche les chevrons
+  if (dialogueMode === "choice") {
+    renderChoice();
+  }
+}
+
+function renderChoice() {
+  // Ajoute chevrons devant le choix sélectionné
+  // On repart du texte complet (question + choix)
+  // Recrée le contenu avec ">" devant choix sélectionné
+
+  let content = "";
+
+  // Question stylée
+  const questionSegments = parseSegments(currentQuestion);
+  questionSegments.forEach(seg => {
+    content += `<span style="color:${seg.color === 'blue' ? 'blue' : '#eee'};font-style:${seg.italic ? 'italic' : 'normal'}">${seg.text}</span>`;
+  });
+
+  content += "<br><br>";
+
+  choices.forEach((choice, i) => {
+    const prefix = i === selectedChoiceIndex ? "> " : "&nbsp;&nbsp;";
+    const segments = parseSegments(choice.text);
+    content += prefix;
+    segments.forEach(seg => {
+      content += `<span style="color:${seg.color === 'blue' ? 'blue' : '#eee'};font-style:${seg.italic ? 'italic' : 'normal'}">${seg.text}</span>`;
+    });
+    content += "<br>";
+  });
+
+  dialogueBox.innerHTML = content;
 }
 
 function hideDialogue() {
-  dialogueActive = false;
-  canMove = true;
-  dialogueBox.style.display = "none";
-  if (typeof dialogueCallback === 'function') {
-    const callback = dialogueCallback;
-    dialogueCallback = null;
-    callback();
+    dialogueActive = false;
+    canMove = true;
+    dialogueBox.style.display = "none";
+  
+    // Ne plus appeler ici choiceCallbackToCall ni dialogueCallback
+  
+    if (typeof dialogueCallback === 'function') {
+      const cb = dialogueCallback;
+      dialogueCallback = null;
+      cb();
+    }
+  }
+  
+
+  
+function showDialogue(content, onFinish = null, options = {}) {
+  dialogueActive = true;
+  canMove = false;
+  dialogueCallback = onFinish;
+
+  currentStyle.font = (typeof content === "object" && content.font) || options.font || '18px Arial';
+  currentStyle.color = (typeof content === "object" && content.color) || options.color || '#eee';
+
+  dialogueBox.style.font = currentStyle.font;
+  dialogueBox.style.color = currentStyle.color;
+  dialogueBox.style.display = "block";
+  dialogueBox.innerHTML = "";
+
+  if (typeof content === "string") {
+    dialogueMode = "text";
+    fullText = content;
+    startTyping();
+  } else if (typeof content === "object") {
+    if (Array.isArray(content.choices)) {
+      dialogueMode = "choice";
+      choices = content.choices;
+      selectedChoiceIndex = 0;
+
+      currentQuestion = content.text;
+      fullText = content.text;  // afficher seulement la question en premier
+
+      startTyping();
+    } else if (content.text) {
+      dialogueMode = "text";
+      fullText = content.text;
+      startTyping();
+    }
   }
 }
 
-window.addEventListener("keydown", (e) => {
-  if (dialogueActive && e.code === "Space") {
-    e.preventDefault();
+function makeDialogue(dialogueObject, finalCallback = null) {
+  const keys = Object.keys(dialogueObject).map(Number).sort((a, b) => a - b);
+  const dialogues = keys.map(k => dialogueObject[k]);
 
-    if (isTyping) {
-      finishTyping(); // skip animation
+  function next(index) {
+    if (index >= dialogues.length) {
+      if (finalCallback) finalCallback();
+      return;
+    }
+
+    const dlg = dialogues[index];
+    const nextCallback = () => next(index + 1);
+
+    if (typeof dlg === "string") {
+      showDialogue(dlg, nextCallback);
+    } else if (typeof dlg === "object") {
+      if (dlg.text && Array.isArray(dlg.choices)) {
+        showDialogue(dlg, nextCallback);
+      } else if (dlg.text) {
+        showDialogue(dlg, nextCallback);
+      } else {
+        showDialogue(String(dlg), nextCallback);
+      }
     } else {
-      hideDialogue(); // dialogue terminé, on ferme
+      showDialogue(String(dlg), nextCallback);
     }
   }
+
+  next(0);
+}
+
+// === INPUT CLAVIER ===
+window.addEventListener("keydown", (e) => {
+  if (!dialogueActive) return;
+
+  if (dialogueMode === "text") {
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (isTyping) {
+        finishTyping();
+      } else {
+        hideDialogue();
+      }
+    }
+} else if (dialogueMode === "choice") {
+        if (isTyping) {
+          if (e.code === "Space") {
+            e.preventDefault();
+            finishTyping();
+          }
+        } else {
+          if (e.code === "ArrowUp") {
+            e.preventDefault();
+            selectedChoiceIndex = (selectedChoiceIndex - 1 + choices.length) % choices.length;
+            renderChoice();
+          } else if (e.code === "ArrowDown") {
+            e.preventDefault();
+            selectedChoiceIndex = (selectedChoiceIndex + 1) % choices.length;
+            renderChoice();
+          } else if (e.code === "Space") {
+            e.preventDefault();
+      
+            // Stocke le callback du choix, mais ne l'appelle pas encore
+            choiceCallbackToCall = choices[selectedChoiceIndex]?.callback || null;
+      
+            hideDialogue();
+      
+            // Appelle le callback après la fermeture, pour éviter conflit
+            if (choiceCallbackToCall) {
+              const cb = choiceCallbackToCall;
+              choiceCallbackToCall = null;
+              setTimeout(cb, 0);
+            }
+          }
+        }
+      }
+      
+  
 });
 
 
-function makeDialogue(dialogueObject, finalCallback = null) {
-    const keys = Object.keys(dialogueObject).map(Number).sort((a, b) => a - b);
-    const dialogues = keys.map(k => dialogueObject[k]);
-  
-    function next(index) {
-      if (index < dialogues.length - 1) {
-        const { text, font, color } = dialogues[index];
-        showDialogue(text, () => next(index + 1), { font, color });
-      } else {
-        const { text, font, color } = dialogues[index];
-        showDialogue(text, finalCallback, { font, color });
-      }
-    }
-  
-    if (dialogues.length > 0) {
-      next(0);
-    }
-  }
   
 // Example lel
 //showDialogue("Je pense que la vie n'est qu'une question de temps, et parfois, il faut savoir saisir les moments qui comptent vraiment. Car chaque seconde qui passe est une chance unique de changer quelque chose, d'aimer, de créer, ou simplement d'exister pleinement. Car oui, la Vie est quelque chose de formidable qu'il ne faut point oblier");
@@ -394,6 +597,7 @@ const levels = {
 
     "Test2": {
         name: "Challenge Begins - Fixed",
+        //light: 0.5, //cool effect lel
         spawn: rel(0.05, 0.75),
         gravityY: 1.5,
         voidY: 1100,
@@ -648,7 +852,7 @@ const levels = {
 
 
     // Niveau sans rien
-    "Cinématique Du Début": {
+    "MainMenu": {
         bodies: []
     }
     
@@ -672,6 +876,7 @@ var voidY = 1000
 let ball; // déclaration globale
 const baseDensity = 0.001; // masse de base
 function initLevel(levelId) {
+    lightOfScene = 0
     updateRenderView();
     currentLevelId = levelId;
     const level = levels[levelId];
@@ -682,12 +887,18 @@ function initLevel(levelId) {
     if (level == undefined) return;
     // Nettoyage complet du monde (mais pas du moteur lui-même)
     Composite.clear(engine.world, false);
-
     // Reset variables de gameplay
     groundContacts = 0;
     canJump = false;
     dynamicKillers.length = 0;
     portals.length = 0;
+    //Light
+    if (level.speedOfLightTranstition != undefined) {
+        lightTransitionSpeed = level.speedOfLightTranstition
+    }
+    if (level.light != undefined) {
+        setTargetLight(level.light)
+    }
 
     // Réglage de la gravité du moteur selon le niveau
     engine.gravity.y = level.gravityY ?? 1.5;
@@ -940,17 +1151,69 @@ Events.on(engine, 'afterUpdate', () => {
 
               (showDialogue est la version "light" si l'on puis dire)
 */
+
+/*
+
+            showDialogue("Once Upon A Time", () => {
+                loadGameState(2)
+            })
+            
+            */
+
+
+            /*
+                        makeDialogue({
+                1: "Bienvenue dans le jeu !",
+                2: {
+                  text: "Que veux-tu faire ?",
+                  choices: [
+                    { text: "Commencer l'aventure", callback: () => console.log("Aventure") },
+                    { text: "Regarder les options", callback: () => console.log("Options") },
+                    { text: "Quitter", callback: () => console.log("Quitter") }
+                  ]
+                },
+                3: "Bonne chance !"
+              }, () => {
+                console.log("Dialogue terminé");
+              });  */
 var currentGameState = 1
 
+
+Matter.Events.on(render, 'afterRender', function() {
+  // Transition vers la lumière cible
+  if (Math.abs(lightOfScene - targetLightLevel) > 0.001) {
+    if (lightOfScene < targetLightLevel) {
+        lightOfScene += lightTransitionSpeed;
+    } else {
+        lightOfScene -= lightTransitionSpeed;
+    }
+    // Clamp pour éviter de dépasser
+    lightOfScene = Math.max(0, Math.min(1, lightOfScene));
+  }
+
+  lightOfSceneFunction(lightOfScene);
+});
+
+  
 function loadGameState(stateId) {
     currentGameState = stateId
     switch(stateId) {
         /// == Cinématique du début == ///
         case 1:
-            initLevel("Cinématique Du Début")
-            render.options.background = "#000"
-            showDialogue("Il y a bien longtemps...", () => {
-                loadGameState(2)
+            initLevel("MainMenu")
+            render.options.background = "#000"       
+            makeDialogue({
+                1: "Greetings.",
+                2: {
+                    text: "I am %The Great Simulator%, your computer. What do you want to do?",
+                    choices: [
+                        {text: "%Start% a New Simulation", callback: () => {console.log("OK")}},
+                        {text: "%Load% a Simulation"},
+                        {text: "Go in %Test% Level", callback: () => {
+                            showDialogue("Once upon a time...", () => {initLevel("Test")})
+                        }}
+                    ]
+                }
             })
         break;
         case 2:
