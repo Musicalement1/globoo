@@ -1,10 +1,20 @@
 // DISCLAIMER: Some commentaries, variables and stuff here are in french as its at first just for me, sometimes I code in english, sometimes in french, it doesn't really matter for me, but for you maybe so be aware that both languages exist in this file.
 
+
+
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 const WORLD_WIDTH = 1920;
 const WORLD_HEIGHT = 1080;
+
+function stringToNumberIfDigitsOnly(str) {
+  if (/^\d+$/.test(str)) {
+    return Number(str);
+  }
+  return str;
+}
 
 
 function drawText(texte, x, y, couleur, police = "20px Arial", alpha = 1) {
@@ -238,7 +248,7 @@ const mouseConstraint = MouseConstraint.create(engine, {
 document.addEventListener('keydown', event => {
     if (event.code === 'KeyD') {
         developerMode = !developerMode;
-        console.log(`🛠️ Mode développeur : ${developerMode ? 'activé' : 'désactivé'}`);
+        console.log(`🛠️ Dev mode : ${developerMode ? 'ON' : 'OFF'}`);
 
         if (developerMode) {
             Composite.add(world, mouseConstraint);
@@ -296,15 +306,35 @@ document.addEventListener('keyup', event => {
 });
 
 
+function isSurfaceGroundLike(normal, angleThreshold = 45) {
+  let angle = Math.atan2(normal.y, normal.x) * (180 / Math.PI);
+  if (angle < 0) angle += 360;
+
+  const upAngle = Math.abs(angle - 270);
+
+
+  return upAngle <= angleThreshold;
+}
+
+
+
+
+
+
 let currentLevelId = 1; // valeur par défaut
 const dynamicKillers = [];
 const portals = [];
 // == DIALOGUE ==//
 
 let canMove = true;
+let canJump = false;
+let jumpCooldown = 0; // pour limiter la fréquence des sauts
 let dialogueMode = "text"; // "text" ou "choice"
 let choices = [];
 let selectedChoiceIndex = 0;
+let playerInput = "";
+let currentInputPlaceholder = "";
+let currentInputDefault = "";
 
 const dialogueBox = document.getElementById("dialogueBox");
 
@@ -420,6 +450,9 @@ function finishTyping() {
   if (dialogueMode === "choice") {
     renderChoice();
   }
+  if (dialogueMode === "input") {
+    createInputField(currentInputPlaceholder || "", currentInputDefault || "");
+  }
 }
 
 function renderChoice() {
@@ -451,22 +484,79 @@ function renderChoice() {
 }
 
 function hideDialogue() {
-    dialogueActive = false;
-    canMove = true;
-    dialogueBox.style.display = "none";
-  
-    // Ne plus appeler ici choiceCallbackToCall ni dialogueCallback
-  
-    if (typeof dialogueCallback === 'function') {
-      const cb = dialogueCallback;
-      dialogueCallback = null;
+  dialogueActive = false;
+  canMove = true;
+  dialogueBox.style.display = "none";
+
+  if (typeof dialogueCallback === 'function') {
+    const cb = dialogueCallback;
+    dialogueCallback = null;
+
+    // ✅ Transmet l'input si on est en mode 'input'
+    if (dialogueMode === "input") {
+      cb(playerInput);
+    } else {
       cb();
     }
   }
-  
+}
 
   
+  function createInputField(placeholder = "", defaultValue = "") {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = placeholder;
+    input.value = defaultValue;
+    input.style.marginTop = "10px";
+    input.style.padding = "5px";
+    input.style.fontSize = "16px";
+    input.style.width = "90%";
+    input.style.boxSizing = "border-box";
+    input.style.border = "1px solid #ccc";
+    input.style.borderRadius = "4px";
+    input.style.backgroundColor = "#222";
+    input.style.color = "#eee";
+  
+    input.id = "dialogueInputField";
+  
+    dialogueBox.appendChild(document.createElement("br"));
+    dialogueBox.appendChild(input);
+    input.focus();
+  }
+  
+  function resetDialogue() {
+    // Arrête la frappe
+    if (isTyping) {
+      clearInterval(typingInterval);
+      typingInterval = null;
+      isTyping = false;
+    }
+  
+    // Nettoie tout
+    dialogueBox.innerHTML = "";
+    dialogueBox.style.display = "none";
+    
+    // Supprime input si existant
+    const inputField = document.getElementById("dialogueInputField");
+    if (inputField) {
+      inputField.remove();
+    }
+  
+    // Réinitialise les états
+    dialogueActive = false;
+    fullText = "";
+    typingIndex = 0;
+    choices = [];
+    selectedChoiceIndex = 0;
+    dialogueMode = "text";
+    currentQuestion = "";
+    currentInputPlaceholder = "";
+    currentInputDefault = "";
+  }
+  
+  
 function showDialogue(content, onFinish = null, options = {}) {
+  resetDialogue()
   dialogueActive = true;
   canMove = false;
   dialogueCallback = onFinish;
@@ -483,6 +573,12 @@ function showDialogue(content, onFinish = null, options = {}) {
     dialogueMode = "text";
     fullText = content;
     startTyping();
+  } else if (content.input === true) {
+    dialogueMode = "input";
+    fullText = content.text || "";
+    currentInputPlaceholder = content.placeholder || "";
+    currentInputDefault = content.default || "";
+    startTyping();
   } else if (typeof content === "object") {
     if (Array.isArray(content.choices)) {
       dialogueMode = "choice";
@@ -498,10 +594,11 @@ function showDialogue(content, onFinish = null, options = {}) {
       fullText = content.text;
       startTyping();
     }
-  }
+  } 
 }
 
 function makeDialogue(dialogueObject, finalCallback = null) {
+  resetDialogue();
   const keys = Object.keys(dialogueObject).map(Number).sort((a, b) => a - b);
   const dialogues = keys.map(k => dialogueObject[k]);
 
@@ -531,6 +628,7 @@ function makeDialogue(dialogueObject, finalCallback = null) {
 
   next(0);
 }
+
 
 // === INPUT CLAVIER ===
 window.addEventListener("keydown", (e) => {
@@ -576,11 +674,28 @@ window.addEventListener("keydown", (e) => {
             }
           }
         }
+      } else if (dialogueMode === "input") {
+        if (e.code === "Enter") {
+          e.preventDefault();
+    
+          const inputField = document.getElementById("dialogueInputField");
+          if (inputField) {
+            playerInput = inputField.value;
+    
+            hideDialogue();
+    
+            if (typeof dialogueCallback === "function") {
+              const cb = dialogueCallback;
+              dialogueCallback = null;
+    
+              setTimeout(() => cb(playerInput), 0);
+            }
+          }
+        }
       }
-      
-  
 });
 
+// =====
 
 function normalizeDamageFormat(body) {
   if (body.damage !== undefined && !Array.isArray(body.damage)) {
@@ -598,6 +713,7 @@ function normalizeDamageFormat(body) {
 
 const levels = {
     "Test": {
+        wallClimbEnabled: true,
         developerMode: true,
         spawn: rel(0.05, 0.1), // ≈ (96, 108)
         gravityY: 1.5,
@@ -671,6 +787,7 @@ const levels = {
     },    
 
     "Test2": {
+        enableDoubleJump: true,
         developerMode: true,
         name: "Challenge Begins - Fixed",
         //light: 0.5, //cool effect lel
@@ -960,10 +1077,22 @@ var ballHealth = 100;
 var ballMaxHealth = 100;
 var healthRegen = 0.075
 
+let isOnGround = false;
+
+let hasDoubleJumped = false;
+//Abilities
+
+let wallClimbEnabled = false; //celle ci pour le walljumping
+let enableDoubleJump = false; // variable globale pour activer/désactiver le double jump
+
 const baseDensity = 0.00105; // masse de base
 
+const groundContactSet = new Set();
 
 function initLevel(levelId) {
+    groundContactSet.clear();
+    hasDoubleJumped = false;
+    updateCanJump();
     lightOfScene = 0
     updateRenderView();
     currentLevelId = levelId;
@@ -976,7 +1105,7 @@ function initLevel(levelId) {
     // Nettoyage complet du monde (mais pas du moteur lui-même)
     Composite.clear(engine.world, false);
     // Reset variables de gameplay
-    groundContacts = 0;
+    //groundContacts = 0;
     canJump = false;
     dynamicKillers.length = 0;
     portals.length = 0;
@@ -1001,7 +1130,8 @@ function initLevel(levelId) {
         friction: level.ballFriction ?? 0,
         frictionAir: level.frictionAir ?? 0.001,
         density: level.ballDensity ?? 0.00105, // 0.001 default density, also change const baseDensity
-        render: { fillStyle: '#4cf' }
+        render: { fillStyle: '#4cf' },
+        label: "Ball"
     });
     Composite.add(world, ball);
     Body.setDensity(ball, baseDensity);
@@ -1030,6 +1160,8 @@ function initLevel(levelId) {
     ballHealth = level.ballHealth ?? 100;
     ballMaxHealth = level.ballMaxHealth ?? 100;
     healthRegen = level.healthRegen ?? 0.075;
+    enableDoubleJump = level.enableDoubleJump ?? false;
+    wallClimbEnabled = level.wallClimbEnabled ?? false;
     // Ajout des autres corps (static/dynamiques) du niveau
     level.bodies.forEach(createFn => {
         const body = createFn(); // Appelle la fonction pour créer un NOUVEL objet
@@ -1183,69 +1315,100 @@ function updateDamageNumbers() {
 
 
 
+function updateCanJump() {
+  canJump = isOnGround;
+}
+
+
+/*function debugGroundContacts() {
+  console.log("Ground contacts:", [...groundContactSet]);
+  console.log("canJump:", canJump);
+}*/
+
+
 Events.on(engine, 'collisionStart', event => {
-    for (let pair of event.pairs) {
-        const { bodyA, bodyB } = pair;
+  for (let pair of event.pairs) {
+    const { bodyA, bodyB, collision } = pair;
 
-        const isBall = bodyA === ball || bodyB === ball;
-        const other = bodyA === ball ? bodyB : bodyA;
+    const isBall = bodyA === ball || bodyB === ball;
+    if (!isBall) continue;
 
-        if (isBall) {
-            //if (other.isStatic) {
-                groundContacts++;
-            //}
+    const other = bodyA === ball ? bodyB : bodyA;
 
-            // Collision avec objet mortel
-            if (dynamicKillers.includes(other)) {
-              let finalDamage = 0;
-              if (other.damage[1] != undefined) {
-                // damage = [50, 2] = retourne une valeur entre 48 et 52 aléatoirement
-                let min = other.damage[0] - other.damage[1];
-                let max = other.damage[0] + other.damage[1];
-                finalDamage = Math.floor(Math.random() * (max - min + 1)) + min;                
-              } else {
-                if (other.damage[0]) {
-                  finalDamage = other.damage[0]
-                } else {
-                finalDamage = other.damage
-                }
-              }
-              ballHealth -= finalDamage
-              const screenPos = worldToScreen(ball.position, render);
-              makeDamageNumber(finalDamage, screenPos.x, screenPos.y);              
-            }
+    // === Détection du sol ===
+    const actualNormal = { ...collision.normal }; // Pas d'inversion nécessaire
 
-            // Collision avec portail
-            if (portals.includes(other) && other.nextLevel !== undefined) {
-                initLevel(other.nextLevel);
-            }
-        }
+    const isGround = wallClimbEnabled || isSurfaceGroundLike(actualNormal);
+
+    if (isGround) {
+      isOnGround = true;
+      hasDoubleJumped = false;
+      groundContactSet.add(pair.id);
+      updateCanJump();
+      //debugGroundContacts();
     }
+
+    // === Collision avec objet mortel ===
+    if (dynamicKillers.includes(other)) {
+      let finalDamage = 0;
+      if (Array.isArray(other.damage)) {
+        let [base, variance] = other.damage;
+        let min = base - variance;
+        let max = base + variance;
+        finalDamage = Math.floor(Math.random() * (max - min + 1)) + min;
+      } else {
+        finalDamage = other.damage ?? 0;
+      }
+
+      ballHealth -= finalDamage;
+
+      const screenPos = worldToScreen(ball.position, render);
+      makeDamageNumber(finalDamage, screenPos.x, screenPos.y);
+    }
+
+    // === Collision avec portail ===
+    if (portals.includes(other) && other.nextLevel !== undefined) {
+      initLevel(other.nextLevel);
+    }
+  }
 });
+
+
 
 
 Events.on(engine, 'collisionEnd', event => {
-    for (let pair of event.pairs) {
-        const { bodyA, bodyB } = pair;
+  for (let pair of event.pairs) {
+    const { bodyA, bodyB } = pair;
 
-        const isBall = bodyA === ball || bodyB === ball;
-        //const isStatic = bodyA.isStatic || bodyB.isStatic;
-
-        if (isBall/* && isStatic*/) {
-            groundContacts = Math.max(groundContacts - 1, 0);
-        }
-    }
+    const isBall = bodyA === ball || bodyB === ball;
+    if (!isBall) continue;
+    isOnGround = false;
+    groundContactSet.delete(pair.id);
+    updateCanJump();
+    //debugGroundContacts();
+  }
 });
 
 
 
 
-let groundContacts = 0;
-let canJump = false;
-let jumpCooldown = 0; // pour limiter la fréquence des sauts
+
+//let groundContacts = 0;
+
+
 
 let heavyMode = false;
 const heavyMultiplier = 7.5;
+
+
+function jump(force, moveFactor) {
+  Body.applyForce(ball, ball.position, { x: 0, y: -force * moveFactor });
+  jumpCooldown = jumpCooldownTime;
+}
+
+
+let jumpPressed = false;          // Pour détecter le premier appui
+let doubleJumpPressed = false;    // Pour détecter si la touche a été relâchée après le 1er saut
 
 // Appliquer les forces à chaque tick
 Events.on(engine, 'beforeUpdate', () => {
@@ -1264,8 +1427,8 @@ Events.on(engine, 'beforeUpdate', () => {
       }
     }
     ball.render.opacity = (ballHealth / ballMaxHealth)
-    canJump = groundContacts > 0;
-
+    //canJump = groundContacts > 0;
+    //updateCanJump()
     // Gestion du heavy mode (Espace)
     if (keys.Space && !heavyMode && canMove) {
         Body.setDensity(ball, baseDensity * heavyMultiplier);
@@ -1286,11 +1449,29 @@ Events.on(engine, 'beforeUpdate', () => {
     }
 
     // Saut automatique si on maintient la touche et que le cooldown est écoulé
-    if (keys.ArrowUp && canJump && jumpCooldown === 0 && canMove) {
-        Body.applyForce(ball, ball.position, { x: 0, y: -jumpForce * moveFactor });
-        jumpCooldown = jumpCooldownTime;
-        canJump = false;
+    if (keys.ArrowUp && jumpCooldown === 0 && canMove) {
+      if (!jumpPressed) {
+        if (canJump) {
+          jump(jumpForce, moveFactor);
+          canJump = false;
+          isOnGround = false;
+          hasDoubleJumped = false;
+          jumpPressed = true;
+          doubleJumpPressed = false;  // on remet à false car on vient de sauter
+        } else if (enableDoubleJump && !hasDoubleJumped && doubleJumpPressed) {
+          jump(jumpForce, moveFactor);
+          hasDoubleJumped = true;
+          jumpPressed = true;
+        }
+      }
+    } else {
+      if (!keys.ArrowUp) {
+        // Touche relâchée
+        jumpPressed = false;
+        doubleJumpPressed = true;  // On autorise le double saut au prochain appui
+      }
     }
+    
 
     // Mouvements avec facteur ajusté
     if (keys.ArrowLeft && canMove) {
@@ -1443,30 +1624,59 @@ Matter.Events.on(render, 'afterRender', function() {
 
   
 function loadGameState(stateId) {
-    currentGameState = stateId
+    currentGameState = stateId;
+    console.log(stateId);
     switch(stateId) {
         /// == Cinématique du début == ///
         case 1:
             initLevel("MainMenu")
             render.options.background = "#000"       
             makeDialogue({
-                1: "Greetings.",
-                2: {
-                    text: "I am %The Great Simulator%, your computer. What do you want to do?",
-                    choices: [
-                        {text: "%Start% a New Simulation", callback: () => {
-                          showDialogue("This is Coming Soon.")
-                        }},
-                        {text: "%Load% a Simulation"},
-                        {text: "Go in %Test% Level", callback: () => {
-                            showDialogue("Once upon a time...", () => {initLevel("Test")})
-                        }}
-                    ]
-                }
-            })
+              1: "Greetings.",
+              2: {
+                text: "I am %The Great Simulator%, your computer. What do you want to do?",
+                choices: [
+                  {
+                    text: "%Start% a New Simulation",
+                    callback: () => {
+                      showDialogue("This is Coming Soon.");
+                    }
+                  },
+                  {
+                    text: "%Load% a Simulation",
+                    callback: () => {
+                      showDialogue({
+                        text: "Enter the name of the simulation to load:",
+                        input: true,
+                        placeholder: "<Game State ID>"
+                      }, (playerInput) => {
+                        // Action après avoir saisi l'input
+                        //showDialogue(`Loading %${playerInput}%...`, () => {
+                          loadGameState(stringToNumberIfDigitsOnly(playerInput));
+                        //});
+                      });
+                    }
+                  },
+                  {
+                    text: "Go in %Test% Level",
+                    callback: () => {
+                      showDialogue("Once upon a time...", () => {
+                        loadGameState(2);
+                      });
+                    }
+                  }
+                ]
+              }
+            });
+            
         break;
-        case 2:
+        case 2://Test
             initLevel("Test")
+        break;
+        default:
+            showDialogue("This Level Doesn't Exist. Bringing You Back To The Simulation Realms", () => {
+              loadGameState(1)
+            })
         break;
     }
 }
