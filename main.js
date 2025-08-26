@@ -322,6 +322,7 @@ function isSurfaceGroundLike(normal, angleThreshold = 45) {
 
 
 let currentLevelId = 1; // valeur par défaut
+const checkpoints = [];
 const dynamicKillers = [];
 const portals = [];
 // == DIALOGUE ==//
@@ -750,6 +751,16 @@ const levels = {
                 return portal;
             },
             () => {
+              const firstcheckpoint = Bodies.rectangle(140, 680, 40, 40, {
+                  isStatic: true,
+                  isSensor: true,
+                  render: { fillStyle: '#0f0' },
+                  collisionFilter: { group: COLLISION_GROUP_PORTAL }
+              });
+              firstcheckpoint.isCheckpoint = true;
+              return firstcheckpoint;
+          },
+            () => {
                 const body = Bodies.rectangle(rel(0.10, 0.28).x, rel(0.28, 0.28).y, 40, 40, {
                     restitution: 0.5,
                     render: { fillStyle: '#f55' }
@@ -1061,6 +1072,8 @@ const levels = {
 };
 
 //Changer les défauts des valeurs dans initLevel() pas ici
+var touchedCheckpointInLevel = 0
+var checkpointPos = {x: 0, y: 0};
 var showHealthBar = true;
 
 var jumpForce = 0.1;
@@ -1109,6 +1122,7 @@ function initLevel(levelId) {
     canJump = false;
     dynamicKillers.length = 0;
     portals.length = 0;
+    checkpoints.length = 0;
     //Light
     if (level.speedOfLightTranstition != undefined) {
         lightTransitionSpeed = level.speedOfLightTranstition
@@ -1123,8 +1137,15 @@ function initLevel(levelId) {
     if (level.spawn != undefined) {
         var spawnX = level.spawn.x;
         var spawnY = level.spawn.y;
+        /*if (touchedCheckpointInLevel = !levelId) {//rénitialisation du checkpoint
+          checkpointPos = {x: spawnX, y: spawnY};
+        }*/
     }
-    // Création de la balle au point de spawn
+    // Création de la balle au point de spawn ou au checkpoint
+    if (touchedCheckpointInLevel == levelId) {
+      spawnX = checkpointPos.x;
+      spawnY = checkpointPos.y;
+    }
     ball = Bodies.circle(spawnX, spawnY, 30, {
         restitution: level.ballRestitution ?? 0.5,
         friction: level.ballFriction ?? 0,
@@ -1196,7 +1217,11 @@ function initLevel(levelId) {
           }
         }
         
-      
+        if (body.isCheckpoint == true) {
+          checkpoints.push(body)
+          //Checkpoint code?
+        }
+
         if (typeof body.nextLevel !== 'undefined') {
           portals.push(body);
         }
@@ -1369,6 +1394,12 @@ Events.on(engine, 'collisionStart', event => {
     // === Collision avec portail ===
     if (portals.includes(other) && other.nextLevel !== undefined) {
       initLevel(other.nextLevel);
+    }
+    // == Checkpoints ==
+    if (checkpoints.includes(other)) {
+      touchedCheckpointInLevel = currentLevelId
+      checkpointPos.x = other.position.x
+      checkpointPos.y = other.position.y
     }
   }
 });
