@@ -9,15 +9,15 @@ const WORLD_HEIGHT = 1080;
 
 function drawText(texte, x, y, couleur, police = "20px Arial", alpha = 1) {
 
-  ctx.save(); // Sauvegarde l'état du contexte
-  ctx.textAlign = "center";     // Centre horizontalement sur x
-  ctx.textBaseline = "middle"; // Centre verticalement sur y
-  ctx.globalAlpha = alpha; // Définit l'opacité globale
-  ctx.fillStyle = couleur; // Peut aussi être en rgba()
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = couleur;
   ctx.font = police;
   ctx.fillText(texte, x, y);
 
-  ctx.restore(); // Restaure l'état du contexte (utile si tu veux dessiner autre chose ensuite)
+  ctx.restore();
 }
 
 
@@ -958,7 +958,7 @@ var voidY = 1000
 let ball; // déclaration globale
 var ballHealth = 100;
 var ballMaxHealth = 100;
-var healthRegen = 0.01
+var healthRegen = 0.075
 
 const baseDensity = 0.00105; // masse de base
 
@@ -1029,7 +1029,7 @@ function initLevel(levelId) {
     voidY = level.voidY ?? 1000;
     ballHealth = level.ballHealth ?? 100;
     ballMaxHealth = level.ballMaxHealth ?? 100;
-    healthRegen = level.healthRegen ?? 0.1;
+    healthRegen = level.healthRegen ?? 0.075;
     // Ajout des autres corps (static/dynamiques) du niveau
     level.bodies.forEach(createFn => {
         const body = createFn(); // Appelle la fonction pour créer un NOUVEL objet
